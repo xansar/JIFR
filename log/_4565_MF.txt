@@ -1,0 +1,112 @@
+==========Config==========
+TRAIN: 
+	epoch: 20
+	device: cuda
+	log_pth: ./log/
+	random_seed: 4565
+	mode: debug
+	eval_step: 5
+OPTIM: 
+	optimizer: AdamW
+	lr_scheduler: CosineAnnealingWarmRestarts
+	lr_adapt_step: 10
+	learning_rate: 1e-3
+	weight_decay: 1e-4
+LOSS: 
+	loss_name: MSELoss
+MODEL: 
+	model_name: MF
+	user_num: 1598
+	item_num: 24985
+	embedding_size: 10
+DATA: 
+	data_name: ExtendedEpinions
+	train_batch_size: 128
+	val_batch_size: 128
+	test_batch_size: 128
+	num_workers: 4
+	neg_nums: 100
+METRIC: 
+	ks: [3, 5, 10]
+	metric_name: ['HR']
+=========================
+
+==========TRAIN BEGIN==========
+Train Epoch: 1
+Loss: 30.4418
+
+Train Epoch: 2
+Loss: 25.4325
+
+Train Epoch: 3
+Loss: 16.8964
+
+Train Epoch: 4
+Loss: 4.9649
+
+Train Epoch: 5
+Loss: 0.9901
+Evaluate Epoch: 5
+loss: 0.5534
+HR@3: 0.0173	HR@5: 0.0381	HR@10: 0.1456	
+
+Train Epoch: 6
+Loss: 0.3444
+
+Train Epoch: 7
+Loss: 0.2197
+
+Train Epoch: 8
+Loss: 0.1782
+
+Train Epoch: 9
+Loss: 0.1596
+
+Train Epoch: 10
+Loss: 0.1499
+Evaluate Epoch: 10
+loss: 0.1591
+HR@3: 0.0401	HR@5: 0.0959	HR@10: 0.1990	
+
+Train Epoch: 11
+Loss: 0.1442
+
+Train Epoch: 12
+Loss: 0.1406
+
+Train Epoch: 13
+Loss: 0.1381
+
+Train Epoch: 14
+Loss: 0.1363
+
+Train Epoch: 15
+Loss: 0.1350
+Evaluate Epoch: 15
+loss: 0.1430
+HR@3: 0.0846	HR@5: 0.1379	HR@10: 0.2064	
+
+Train Epoch: 16
+Loss: 0.1340
+
+Train Epoch: 17
+Loss: 0.1332
+
+Train Epoch: 18
+Loss: 0.1325
+
+Train Epoch: 19
+Loss: 0.1320
+
+Train Epoch: 20
+Loss: 0.1316
+Evaluate Epoch: 20
+loss: 0.1393
+HR@3: 0.1060	HR@5: 0.1436	HR@10: 0.2036	
+
+Test Epoch: 
+loss: 0.1384
+HR@3: 0.1064	HR@5: 0.1430	HR@10: 0.2043	
+
+best: HR@3: 0.1064	best: HR@5: 0.1436	best: HR@10: 0.2064	
+

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 """
-@File    :   model.py    
+@File    :   ExtendedEpinionsMF.py
 @Contact :   xansar@ruc.edu.cn
 
 @Modify Time      @Author    @Version    @Desciption
@@ -13,11 +13,15 @@
 import torch.nn as nn
 import torch
 
-class MF(nn.Module):
-    def __init__(self, user_num=1597, item_num=24984, embedding_size=10):
-        super(MF, self).__init__()
-        self.U = nn.Parameter(torch.randn(user_num, embedding_size))
-        self.I = nn.Parameter(torch.randn(item_num, embedding_size))
+class MFModel(nn.Module):
+    def __init__(self, config):
+        super(MFModel, self).__init__()
+        self.config = config
+        self.user_num = eval(config['MODEL']['user_num'])
+        self.item_num = eval(config['MODEL']['item_num'])
+        self.embedding_size = eval(config['MODEL']['embedding_size'])
+        self.U = nn.Parameter(torch.randn(self.user_num, self.embedding_size))
+        self.I = nn.Parameter(torch.randn(self.item_num, self.embedding_size))
 
     def forward(self, **inputs):
         user = inputs['user']
@@ -31,7 +35,7 @@ if __name__ == '__main__':
     user = torch.tensor([0, 0, 1, 2])
     item = torch.tensor([0, 1, 1, 0])
     rate = torch.tensor([3, 2, 4, 5], dtype=torch.float)
-    model = MF(3, 2, 4)
+    model = MFModel(3, 2, 4)
     loss_func = nn.MSELoss()
     optimizer = torch.optim.AdamW(lr=1e-1, params=model.parameters(), weight_decay=1e-4)
     for i in range(100):
