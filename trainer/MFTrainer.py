@@ -177,15 +177,15 @@ class MFTrainer:
 
         for e in range(1, epoch + 1):
             all_loss = 0.0
-            # for idx, rate_data in enumerate(tqdm(self.train_rate_loader)):
-            #     loss = self.step(
-            #         mode='train',
-            #         user=rate_data[:, 0].long(),
-            #         item=rate_data[:, 1].long(),
-            #         rate=rate_data[:, 2].float()
-            #     )
-            #     all_loss += loss
-            # all_loss /= idx
+            for idx, rate_data in enumerate(tqdm(self.train_rate_loader)):
+                loss = self.step(
+                    mode='train',
+                    user=rate_data[:, 0].long(),
+                    item=rate_data[:, 1].long(),
+                    rate=rate_data[:, 2].float()
+                )
+                all_loss += loss
+            all_loss /= idx
             metric_str = f'Train Epoch: {e}\nLoss: {all_loss:.4f}\n'
 
             if e % self.eval_step == 0:
