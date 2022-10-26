@@ -20,7 +20,7 @@ from tqdm import trange
 random.seed(1024)
 np.random.seed(1024)
 
-def split_data(train_ratio=0.75, val_ratio=0.05, test_ratio=0.2, raw_pth='../ExtendedEpinions', model_name='MF'):
+def split_data(train_ratio=0.75, val_ratio=0.05, test_ratio=0.2, raw_pth='../ExtendedEpinions', model_name='LightGCN'):
     dir_pth = os.path.join(raw_pth, f'splited_data/{model_name}')
     if not os.path.isdir(dir_pth):
         os.mkdir(dir_pth)

@@ -11,3 +11,4 @@
 
 # import lib
 from .MFTrainer import *
+from .LightGCNTrainer import *

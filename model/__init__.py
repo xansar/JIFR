@@ -11,3 +11,5 @@
 
 # import lib
 from .MFModel import *
+from .LightGCNModel import *
+from .loss import *

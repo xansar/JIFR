@@ -21,7 +21,6 @@ class ExtendedEpinionsRateMF(Dataset):
         self.config = config
         self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
-        self.neg_nums = 2
         self.data_pth = data_pth
         dir_name, base_name = os.path.split(self.data_pth)
         self.mode = base_name

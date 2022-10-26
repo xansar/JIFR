@@ -49,9 +49,9 @@ class MFTrainer:
         self.lr_scheduler = lr_scheduler
 
         self.metric = metric
-        with open(os.path.join(f'./data/ExtendedEpinions/splited_data/{self.model_name}', 'user2v.json'), 'r') as f:
+        with open(os.path.join(f'./data/ExtendedEpinions/splited_data/', 'user2v.json'), 'r') as f:
             self.user2item = json.load(f)['user2item']
-        self.neg_nums = eval(config['DATA']['neg_nums'])
+        self.neg_num = eval(config['DATA']['neg_num'])
 
 
         self.data_name = config['DATA']['data_name']
@@ -122,9 +122,7 @@ class MFTrainer:
                     neg_pred_id = user_id_lst[i]
                     pos_pred = pred[i].reshape(1)
                     neg_pred = neg_pred_lst[neg_pred_id]
-                    neg_item = neg_idx[neg_pred_id]
-                    target = inputs['item'][i].reshape(1)
-                    self.metric.compute_metrics(pos_pred, neg_pred, neg_item, target)
+                    self.metric.compute_metrics(pos_pred, neg_pred)
                 return loss.item()
         else:
             raise ValueError("Wrong Mode")
@@ -135,12 +133,14 @@ class MFTrainer:
         user_id_lst = []  # 每个用户出现的次数
         neg_samples = None  # 负采样的idx
         for idx, u in enumerate(user_idx_single):
+            # 当前u出现了几次
             num = torch.count_nonzero(user == u)
             user_id_lst.extend(num.item() * [idx])
+            # 当前u的互动列表
             interacted_item = self.user2item[str(u.item())]
             mask = torch.ones(self.item_num)
             mask[interacted_item] = 0
-            cur_neg = torch.multinomial(mask, self.neg_nums, replacement=True).unsqueeze(0)
+            cur_neg = torch.multinomial(mask, self.neg_num, replacement=True).unsqueeze(0)
             if neg_samples is None:
                 neg_samples = cur_neg
             else:
@@ -197,6 +197,10 @@ class MFTrainer:
                 metric_str = self._generate_metric_str(metric_str)
 
             tqdm.write(self.log(metric_str))
+            if self.metric.is_early_stop:
+                tqdm.write(self.log("Early Stop!"))
+                break
+        tqdm.write(self.log(self.metric.print_best_metrics()))
 
         self.metric.clear_metrics()
         all_loss = 0.0
@@ -214,6 +218,4 @@ class MFTrainer:
         metric_str += f'loss: {all_loss:.4f}\n'
         metric_str = self._generate_metric_str(metric_str)
         tqdm.write(self.log(metric_str))
-
-        tqdm.write(self.log(self.metric.print_best_metrics()))
         tqdm.write("=" * 10 + "TRAIN END" + "=" * 10)

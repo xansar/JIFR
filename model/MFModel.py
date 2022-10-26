@@ -9,9 +9,10 @@
 2022/10/24 21:00   zxx      1.0         None
 """
 
+import torch
 # import lib
 import torch.nn as nn
-import torch
+
 
 class MFModel(nn.Module):
     def __init__(self, config):

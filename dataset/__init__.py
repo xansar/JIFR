@@ -11,3 +11,4 @@
 
 # import lib
 from .ExtendedEpinionsMF import *
+from .ExtendedEpinionsLightGCN import *
