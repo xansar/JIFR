@@ -108,16 +108,24 @@ class MFTrainer:
                     item=item
                 )
                 loss = self.loss_func(pred, rate)
-
                 pred = pred.cpu()
+
+                # neg_idx：每一行每个用户对应的neg_item
+                # user_idx_single：batch包含的user列表
+                # user_id_lst：标注batch内的每个样本对应的负样本的id
                 neg_idx, user_idx_single, user_id_lst = self._negative_sample(user)
+
+                # 每个用户只跟一组负样本计算一次，neg_pred_lst中，pred的组数与不同用户的个数一致
                 neg_pred_lst = []
                 for i in range(len(user_idx_single)):
                     neg_num = neg_idx[i].shape[0]
-                    user = user_idx_single[i].repeat(neg_num)
+                    cur_user = user_idx_single[i].repeat(neg_num)
                     item = neg_idx[i]
-                    neg_pred = self.model(user=user, item=item)
+                    neg_pred = self.model(user=cur_user, item=item)
                     neg_pred_lst.append(neg_pred.cpu())
+
+                # 对batch中的每一个正样本，找一个负样本，这里负样本是较少的
+                # user相同时使用同一组负样本
                 for i in range(pred.shape[0]):
                     neg_pred_id = user_id_lst[i]
                     pos_pred = pred[i].reshape(1)
@@ -133,13 +141,14 @@ class MFTrainer:
         user_id_lst = []  # 每个用户出现的次数
         neg_samples = None  # 负采样的idx
         for idx, u in enumerate(user_idx_single):
-            # 当前u出现了几次
+            # # 当前u出现了几次
             num = torch.count_nonzero(user == u)
             user_id_lst.extend(num.item() * [idx])
             # 当前u的互动列表
             interacted_item = self.user2item[str(u.item())]
             mask = torch.ones(self.item_num)
             mask[interacted_item] = 0
+            # 这是在全局抽100个样本
             cur_neg = torch.multinomial(mask, self.neg_num, replacement=True).unsqueeze(0)
             if neg_samples is None:
                 neg_samples = cur_neg
@@ -168,15 +177,15 @@ class MFTrainer:
 
         for e in range(1, epoch + 1):
             all_loss = 0.0
-            for idx, rate_data in enumerate(tqdm(self.train_rate_loader)):
-                loss = self.step(
-                    mode='train',
-                    user=rate_data[:, 0].long(),
-                    item=rate_data[:, 1].long(),
-                    rate=rate_data[:, 2].float()
-                )
-                all_loss += loss
-            all_loss /= idx
+            # for idx, rate_data in enumerate(tqdm(self.train_rate_loader)):
+            #     loss = self.step(
+            #         mode='train',
+            #         user=rate_data[:, 0].long(),
+            #         item=rate_data[:, 1].long(),
+            #         rate=rate_data[:, 2].float()
+            #     )
+            #     all_loss += loss
+            # all_loss /= idx
             metric_str = f'Train Epoch: {e}\nLoss: {all_loss:.4f}\n'
 
             if e % self.eval_step == 0:

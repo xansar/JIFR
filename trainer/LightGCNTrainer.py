@@ -142,7 +142,7 @@ class LightGCNTrainer:
         test_pred_g = dgl.edge_subgraph(self.g, range(self.train_size + self.val_size, self.g.num_edges()), relabel_nodes=False)
         return train_g, val_pred_g, val_g, test_pred_g
 
-    def get_neg_graph(self, graph, u, k=101):
+    def get_neg_graph(self, graph, u, k=100):
         """
         为用户序列中的每个用户进行负采样，构建负采样图
         :param graph: 整图，一般是包含所有训练、测试样本的图
@@ -155,7 +155,10 @@ class LightGCNTrainer:
         :rtype: dgl.graph
         """
         user_num = self.user_num
+        # 因为是二分图，只有（userid, itemid)这一部分是有交互的，user之间、item之间没有交互
+        # 抽取的结果是user * k，即为每个用户抽一个k长度的负样本
         neg_item_selected = torch.multinomial((1 - graph.adj().to_dense())[:user_num, user_num:], k)
+        # 接下来为每个正样本从这k个中抽取一个负样本
         neg_item_idx = torch.randint(0, k, (1, u.shape[0])).reshape(-1)
         v = neg_item_selected[u, neg_item_idx].to(self.device)
         num_nodes = self.user_num + self.item_num
