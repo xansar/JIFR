@@ -33,9 +33,10 @@ class LightGCNTrainer:
         self.random_seed = eval(self.config['TRAIN']['random_seed'])
         # 设置log地址
         self.model_name = self.config['MODEL']['model_name']
-        if not os.path.isdir('./log'):
-            os.mkdir('./log')
-        self.log_pth = self.config['TRAIN']['log_pth'] + str(self.random_seed) + f'_{self.model_name}.txt'
+        self.log_dir = self.config['TRAIN']['log_pth']
+        if not os.path.isdir(os.path.join(self.log_dir, self.model_name)):
+            os.mkdir(os.path.join(self.log_dir, self.model_name))
+        self.log_pth = os.path.join(self.log_dir, self.model_name, str(self.random_seed) + f'_{self.model_name}.txt')
 
         # 打印config
         self.print_config()

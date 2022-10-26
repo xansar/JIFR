@@ -73,5 +73,5 @@ class MFMetric(BaseMetric):
             self.metric_dict['HR'][k]['cnt'] = -1
             if self.metric_dict['HR'][k]['value'] > self.metric_dict['HR'][k]['best']:
                 self.metric_dict['HR'][k]['best'] = self.metric_dict['HR'][k]['value']
-            elif self.metric_dict['HR'][k]['value'] < self.metric_dict['HR'][k]['best']:
+            elif k == self.ks[-1] and self.metric_dict['HR'][k]['value'] < self.metric_dict['HR'][k]['best']:
                 self.is_early_stop = True

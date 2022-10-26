@@ -29,10 +29,10 @@ class MFTrainer:
         self.config = config
         self.random_seed = eval(self.config['TRAIN']['random_seed'])
         self.model_name = self.config['MODEL']['model_name']
-        if not os.path.isdir('./log'):
-            os.mkdir('./log')
-        self.log_pth = self.config['TRAIN']['log_pth'] + str(self.random_seed) + f'_{self.model_name}.txt'
-        self.print_config()
+        self.log_dir = self.config['TRAIN']['log_pth']
+        if not os.path.isdir(os.path.join(self.log_dir, self.model_name)):
+            os.mkdir(os.path.join(self.log_dir, self.model_name))
+        self.log_pth = os.path.join(self.log_dir, self.model_name, str(self.random_seed) + f'_{self.model_name}.txt')
 
         self.train_rate_loader = dataloader_dict['train']
         # self.train_link_loader = train_link_loader
