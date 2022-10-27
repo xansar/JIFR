@@ -19,6 +19,7 @@ class DotProductPredictor(nn.Module):
     def forward(self, graph, u_f, v_f):
         # h是从5.1节的GNN模型中计算出的节点表示
         with graph.local_scope():
+            # 这里拼接了，实际上item embedding的idx要比user大
             h = torch.cat([u_f, v_f], dim=0)
             graph.ndata['h'] = h
             graph.apply_edges(fn.u_dot_v('h', 'h', 'score'))

@@ -57,6 +57,7 @@ class LightGCNTrainer:
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
         self.eval_step = eval(config['TRAIN']['eval_step'])
+        self.warm_epoch = eval(config['TRAIN']['warm_epoch'])
 
         # 读取metric配置
         self.metric = metric
@@ -91,7 +92,7 @@ class LightGCNTrainer:
         # 模型单步计算
         if mode == 'train':
             train_pos_g = inputs['train_pos_g']
-            train_neg_g = inputs['train_neg_g']
+            train_neg_g = self.get_neg_graph(self.g, train_pos_g.edges()[0], self.neg_num, mode=mode)
             self.model.train()
             self.optimizer.zero_grad()
             pos_pred, neg_pred = self.model(
@@ -112,8 +113,9 @@ class LightGCNTrainer:
                 user_embedding, item_embedding = self.model.get_embedding(message_g)
                 pos_pred = self.model.predictor(pred_g, user_embedding, item_embedding)
                 # 抽取self.neg_num个负样本进行预测
-                neg_g = self.get_neg_graph(self.g, pred_g.edges()[0].repeat(self.neg_num), self.neg_num + 1)
-                neg_pred = self.model.predictor(neg_g, user_embedding, item_embedding).reshape(-1, self.neg_num).cpu()
+                neg_g = self.get_neg_graph(self.g, pred_g.edges()[0], self.neg_num, mode=mode)
+                # 注意转置的位置，一定先reshape再转置，否则neg与pos无法对应
+                neg_pred = self.model.predictor(neg_g, user_embedding, item_embedding).reshape(self.neg_num, -1).t().cpu()
                 loss = self.loss_func(pos_pred.reshape(-1), neg_pred[:, -1].to(self.device))
                 self.metric.compute_metrics(pos_pred.cpu(), neg_pred)
                 return loss.item()
@@ -143,14 +145,16 @@ class LightGCNTrainer:
         test_pred_g = dgl.edge_subgraph(self.g, range(self.train_size + self.val_size, self.g.num_edges()), relabel_nodes=False)
         return train_g, val_pred_g, val_g, test_pred_g
 
-    def get_neg_graph(self, graph, u, k=100):
+    def get_neg_graph(self, graph, u, k=100, mode='train'):
         """
         为用户序列中的每个用户进行负采样，构建负采样图
+        :param mode: train：每个用户下的正样本对应的负样本不同，evaluate：每个用户下的正样本对应的负样本相同
+        :type mode: str
         :param graph: 整图，一般是包含所有训练、测试样本的图
         :type graph: dgl.graph
         :param u: 待采样的用户id序列
         :type u: tensor
-        :param k: 首次为每个用户负采样的数量，后续分配到每条正边的负边将从首次采样结果中产生
+        :param k: 训练时为用户初次采样负样本的数量，之后正样本再从中抽取一个作为负样本
         :type k: int
         :return: 负采样图
         :rtype: dgl.graph
@@ -158,11 +162,19 @@ class LightGCNTrainer:
         user_num = self.user_num
         # 因为是二分图，只有（userid, itemid)这一部分是有交互的，user之间、item之间没有交互
         # 抽取的结果是user * k，即为每个用户抽一个k长度的负样本
-        neg_item_selected = torch.multinomial((1 - graph.adj().to_dense())[:user_num, user_num:], k)
-        # 接下来为每个正样本从这k个中抽取一个负样本
-        neg_item_idx = torch.randint(0, k, (1, u.shape[0])).reshape(-1)
-        v = neg_item_selected[u, neg_item_idx].to(self.device)
+        ## 这里一定注意，因为截取了user-item互动部分的矩阵，此时取出的idx下标是不对的，需要偏移user_num位
+        neg_item_selected = torch.multinomial((1 - graph.adj().to_dense())[:user_num, user_num:], k, replacement=True) + user_num
+        # 测试时用户拥有的正样本对应同一组负样本
+        if mode == 'evaluate':
+            v = neg_item_selected[u].t().reshape(-1).to(self.device)
+            u = u.repeat(k)
+        else:
+            # 为每个正样本从这k个中抽取一个负样本
+            neg_item_idx = torch.randint(0, k, (1, u.shape[0])).reshape(-1)
+            v = neg_item_selected[u, neg_item_idx].to(self.device)
         num_nodes = self.user_num + self.item_num
+        # 保证负样本中只有item的序号
+        assert (v < self.user_num).sum() == 0
         return dgl.graph((u, v), num_nodes=num_nodes)
 
     def train(self):
@@ -175,14 +187,14 @@ class LightGCNTrainer:
         val_pred_g = val_pred_g.to(self.device)
         # val_g = val_g.to(self.device)
         test_pred_g = test_pred_g.to(self.device)
-        train_neg_g = self.get_neg_graph(self.g, train_g.edges()[0])
 
         for e in range(1, epoch + 1):
             """
             write codes for train
             and return loss
             """
-            loss = self.step(mode='train', train_pos_g=train_g, train_neg_g=train_neg_g)
+
+            loss = self.step(mode='train', train_pos_g=train_g)
             metric_str = f'Train Epoch: {e}\nLoss: {loss:.4f}\n'
 
             if e % self.eval_step == 0:
@@ -194,9 +206,11 @@ class LightGCNTrainer:
                 metric_str += f'loss: {loss:.4f}\n'
                 metric_str = self._generate_metric_str(metric_str)
             tqdm.write(self.log(metric_str))
-            if self.metric.is_early_stop:
+            if self.metric.is_early_stop and e >= self.warm_epoch:
                 tqdm.write(self.log("Early Stop!"))
                 break
+            else:
+                self.metric.is_early_stop = False
 
         tqdm.write(self.log(self.metric.print_best_metrics()))
 

@@ -59,12 +59,12 @@ class MFMetric(BaseMetric):
         for k in self.ks:
             _, topk_id = torch.topk(total_pred, k)
             # 0位置就是正样本
-            if 0 in topk_id:
-                self.metric_dict['HR'][k]['value'] += 1
-            self.metric_dict['HR'][k]['cnt'] += 1
+            hit = (topk_id == 0).count_nonzero(dim=1).clamp(max=1).sum()
+            self.metric_dict['HR'][k]['value'] = hit.item()
+            self.metric_dict['HR'][k]['cnt'] = total_pred.shape[0]
 
     def compute_metrics(self, pos_pred, neg_pred):
-        total_pred = torch.cat([pos_pred, neg_pred], dim=0)
+        total_pred = torch.cat([pos_pred, neg_pred], dim=1)
         self._compute_HR(total_pred)
 
     def get_batch_metrics(self):
