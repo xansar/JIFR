@@ -49,7 +49,7 @@ def setup_seed(seed):
 def parse_args():
     # Parses the arguments.
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('--config_pth', type=str, default='LightGCN.ini',
+    parser.add_argument('--config_pth', type=str, default='RateLightGCN.ini',
                         help='Choose config')
     return parser.parse_args()
 
@@ -60,10 +60,12 @@ def run(config_pth):
     setup_seed(seed)
     data_name = config['DATA']['data_name']
     model_name = config['MODEL']['model_name']
-    dataset_name = data_name + 'Rate' + model_name
-    # data_pth = '../data/ExtendedEpinions/splited_data/MFModel/val'
-    data_pth = os.path.join('./data', data_name, 'splited_data')
-    dataset = eval(dataset_name)(data_pth)
+    task = config['TRAIN']['task']
+
+    dataset_name = data_name + task + model_name
+
+    dataset = eval(dataset_name)(config)
+
     model = eval(model_name + 'Model')(config)
     # model.apply(weight_init)
 

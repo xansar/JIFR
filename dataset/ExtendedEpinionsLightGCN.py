@@ -18,19 +18,15 @@ import os
 import numpy as np
 
 class ExtendedEpinionsRateLightGCN(DGLDataset):
-    def __init__(self, data_pth='../data/ExtendedEpinions/splited_data/', name='ExtendedEpinions'):
+    def __init__(self, config):
         self._g = None
-        # self.data_pth = data_pth
-        # self.train_mask = dict()
-        # self.test_mask = dict()
-
-        # self.config = config
-        # self.user_num = eval(config['MODEL']['user_num'])
-        # self.item_num = eval(config['MODEL']['item_num'])
-        self.model_name = 'LightGCN'
-        self.user_num = 1598
-        self.item_num = 24985
-        self.data_pth = data_pth
+        self.config = config
+        self.user_num = eval(config['MODEL']['user_num'])
+        self.item_num = eval(config['MODEL']['item_num'])
+        self.model_name = config['MODEL']['model_name']
+        self.task = config['TRAIN']['task']
+        self.data_name = config['DATA']['data_name']
+        self.data_pth = os.path.join('./data', self.data_name, 'splited_data', self.model_name)
         self.dir_pth = os.path.join(self.data_pth, self.model_name)
 
         print('=' * 20 + 'begin process' + '=' * 20)
@@ -40,20 +36,20 @@ class ExtendedEpinionsRateLightGCN(DGLDataset):
             self.load()
             print('=' * 20 + 'load graph finished' + '=' * 20)
 
-        super(ExtendedEpinionsRateLightGCN, self).__init__(name=name)
+        super(ExtendedEpinionsRateLightGCN, self).__init__(name=self.data_name)
 
     def save(self):
         if not os.path.isdir(self.dir_pth):
             os.mkdir(self.dir_pth)
-        graph_pth = os.path.join(self.dir_pth, 'graph.bin')
+        graph_pth = os.path.join(self.dir_pth, f'{self.task}_graph.bin')
         dgl.save_graphs(graph_pth, self._g)
-        info_pth = os.path.join(self.dir_pth, 'info.pkl')
+        info_pth = os.path.join(self.dir_pth, f'{self.task}_info.pkl')
         dgl.data.utils.save_info(info_pth, {'train_size': self.train_size, 'val_size': self.val_size})
 
     def load(self):
-        graph_pth = os.path.join(self.dir_pth, 'graph.bin')
+        graph_pth = os.path.join(self.dir_pth, f'{self.task}_graph.bin')
         self._g = dgl.load_graphs(graph_pth)[0][0]
-        info_pth = os.path.join(self.dir_pth, 'info.pkl')
+        info_pth = os.path.join(self.dir_pth, f'{self.task}_info.pkl')
         size_dict = dgl.data.utils.load_info(info_pth)
         self.train_size = size_dict['train_size']
         self.val_size = size_dict['val_size']
@@ -64,7 +60,7 @@ class ExtendedEpinionsRateLightGCN(DGLDataset):
         i = np.empty(0)
         # 将所有的边都读到总图中
         for mode in ['train', 'val', 'test']:
-            rate_pth = self.data_pth + mode + '.rate'
+            rate_pth = os.path.join(self.data_pth, mode + '.rate')
             record[mode] = np.loadtxt(rate_pth, delimiter=',', dtype=np.float32)
             u = np.concatenate([u, record[mode][:, 0]])
             i = np.concatenate([i, record[mode][:, 1]])
@@ -84,8 +80,8 @@ class ExtendedEpinionsRateLightGCN(DGLDataset):
         print('=' * 20 + 'save graph finished' + '=' * 20)
 
     def has_cache(self):
-        is_graph = os.path.exists(os.path.join(self.dir_pth, 'graph.bin'))
-        is_info = os.path.exists(os.path.join(self.dir_pth, 'info.pkl'))
+        is_graph = os.path.exists(os.path.join(self.dir_pth, f'{self.task}_graph.bin'))
+        is_info = os.path.exists(os.path.join(self.dir_pth, f'{self.task}_info.pkl'))
         if is_info and is_graph:
             return True
         else:
@@ -97,6 +93,34 @@ class ExtendedEpinionsRateLightGCN(DGLDataset):
     def __getitem__(self, idx):
         assert idx == 0
         return self._g
+
+class ExtendedEpinionsLinkLightGCN(ExtendedEpinionsRateLightGCN):
+    def __init__(self, config):
+        # 这里还包含了没有发出trust关系的用户id
+        self.total_user_num = eval(config['MODEL']['total_user_num'])
+        super(ExtendedEpinionsLinkLightGCN, self).__init__(config)
+    def process(self):
+        record = {}
+        u = np.empty(0)
+        v = np.empty(0)
+        # 将所有的边都读到总图中
+        for mode in ['train', 'val', 'test']:
+            link_pth = os.path.join(self.data_pth, mode + '.link')
+            record[mode] = np.loadtxt(link_pth, delimiter=',', dtype=np.float32)
+            u = np.concatenate([u, record[mode][:, 0]])
+            v = np.concatenate([v, record[mode][:, 1]])
+        print('=' * 20 + 'read link data finished' + '=' * 20)
+        self.train_size = len(record['train'])
+        self.val_size = len(record['val'])
+        # 构建全图
+        ## 节点数量为两类节点数量之和
+        num_nodes = self.total_user_num
+        self._g = dgl.graph((u, v), num_nodes=num_nodes)
+        print('=' * 20 + 'construct graph finished' + '=' * 20)
+
+        # 保存
+        self.save()
+        print('=' * 20 + 'save graph finished' + '=' * 20)
 
 
 if __name__ == '__main__':

@@ -108,10 +108,12 @@ def relabel():
         # print(user_raw_idx2new_idx)
     # 把link里面user2的也放进去
     sorted_user_idx_lst = sorted(link_df.user2.value_counts().index)
+    cnt = 0
     for i in range(len(sorted_user_idx_lst)):
         raw_id = sorted_user_idx_lst[i]
         if raw_id not in user_raw_idx2new_idx.keys():
-            new_id = i + len(u_array)
+            new_id = cnt + len(u_array)
+            cnt += 1
             # print(type(raw_id), type(new_id))
             user_raw_idx2new_idx[raw_id] = new_id
             user_new_idx2raw_idx[new_id] = raw_id
@@ -120,6 +122,7 @@ def relabel():
     # 保存
     user_idx_dict = {
         'pred_user_max': pred_user_max,
+        'total_user_num': len(user_new_idx2raw_idx),
         'raw2new': user_raw_idx2new_idx,
         'new2raw': user_new_idx2raw_idx
     }
@@ -160,6 +163,6 @@ def relabel():
 
 
 if __name__ == '__main__':
-    transfer_data()
-    filter_data(threshold=60)
+    # transfer_data()
+    # filter_data(threshold=60)
     relabel()

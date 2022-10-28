@@ -49,7 +49,9 @@ class LightGCNTrainer:
         self.val_size = dataset.val_size
 
         # 读取训练有关配置
+        self.task = config['TRAIN']['task']
         self.user_num = eval(config['MODEL']['user_num'])
+        self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.neg_num = eval(config['DATA']['neg_num'])
         self.model = model
@@ -110,12 +112,12 @@ class LightGCNTrainer:
                 pred_g = inputs['pred_g']
                 self.model.eval()
                 # 先预测正样本，返回pred_g.num_edges() * 1
-                user_embedding, item_embedding = self.model.get_embedding(message_g)
-                pos_pred = self.model.predictor(pred_g, user_embedding, item_embedding)
+                embedding = self.model.get_embedding(message_g)
+                pos_pred = self.model.predictor(pred_g, embedding)
                 # 抽取self.neg_num个负样本进行预测
                 neg_g = self.get_neg_graph(self.g, pred_g.edges()[0], self.neg_num, mode=mode)
                 # 注意转置的位置，一定先reshape再转置，否则neg与pos无法对应
-                neg_pred = self.model.predictor(neg_g, user_embedding, item_embedding).reshape(self.neg_num, -1).t().cpu()
+                neg_pred = self.model.predictor(neg_g, embedding).reshape(self.neg_num, -1).t().cpu()
                 loss = self.loss_func(pos_pred.reshape(-1), neg_pred[:, -1].to(self.device))
                 self.metric.compute_metrics(pos_pred.cpu(), neg_pred)
                 return loss.item()
@@ -163,18 +165,21 @@ class LightGCNTrainer:
         # 因为是二分图，只有（userid, itemid)这一部分是有交互的，user之间、item之间没有交互
         # 抽取的结果是user * k，即为每个用户抽一个k长度的负样本
         ## 这里一定注意，因为截取了user-item互动部分的矩阵，此时取出的idx下标是不对的，需要偏移user_num位
-        neg_item_selected = torch.multinomial((1 - graph.adj().to_dense())[:user_num, user_num:], k, replacement=True) + user_num
+        if self.task == 'Rate':
+            neg_sample_selected = torch.multinomial((1 - graph.adj().to_dense())[:user_num, user_num:], k, replacement=True) + user_num
+            num_nodes = self.user_num + self.item_num
+        else:
+            neg_sample_selected = torch.multinomial((1 - graph.adj().to_dense())[:user_num, :], k, replacement=True)
+            num_nodes = self.total_user_num
         # 测试时用户拥有的正样本对应同一组负样本
         if mode == 'evaluate':
-            v = neg_item_selected[u].t().reshape(-1).to(self.device)
+            v = neg_sample_selected[u].t().reshape(-1).to(self.device)
             u = u.repeat(k)
         else:
             # 为每个正样本从这k个中抽取一个负样本
-            neg_item_idx = torch.randint(0, k, (1, u.shape[0])).reshape(-1)
-            v = neg_item_selected[u, neg_item_idx].to(self.device)
-        num_nodes = self.user_num + self.item_num
-        # 保证负样本中只有item的序号
-        assert (v < self.user_num).sum() == 0
+            neg_sample_idx = torch.randint(0, k, (1, u.shape[0])).reshape(-1)
+            v = neg_sample_selected[u, neg_sample_idx].to(self.device)
+
         return dgl.graph((u, v), num_nodes=num_nodes)
 
     def train(self):
