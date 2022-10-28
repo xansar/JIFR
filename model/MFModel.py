@@ -13,23 +13,36 @@ import torch
 # import lib
 import torch.nn as nn
 
-
 class MFModel(nn.Module):
     def __init__(self, config):
         super(MFModel, self).__init__()
         self.config = config
+        self.task = config['TRAIN']['task']
         self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
+        self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.embedding_size = eval(config['MODEL']['embedding_size'])
-        self.U = nn.Parameter(torch.randn(self.user_num, self.embedding_size))
-        self.I = nn.Parameter(torch.randn(self.item_num, self.embedding_size))
+
+        if self.task == 'Rate':
+            self.nodes_num = self.user_num + self.item_num
+        elif self.task == 'Link':
+            self.nodes_num = self.total_user_num
+        self.embedding = nn.Parameter(torch.zeros(self.nodes_num, self.embedding_size))
+        self.weight_init()
+
+    def weight_init(self):
+        nn.init.xavier_normal_(self.embedding.data)
 
     def forward(self, **inputs):
-        user = inputs['user']
-        item = inputs['item']
-        u = self.U[user]
-        i = self.I[item]
-        pred = torch.sum(u * i, dim=1)
+        u = inputs['u']
+        # 因为user和item的embedding放在一起，所以item部分的id需要加上user_num
+        if self.task == 'Rate':
+            v = inputs['v'] + self.user_num
+        else:
+            v = inputs['v']
+        u = self.embedding[u]
+        v = self.embedding[v]
+        pred = torch.sum(u * v, dim=1)
         return pred
 
 if __name__ == '__main__':

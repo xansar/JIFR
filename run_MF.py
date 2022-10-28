@@ -56,7 +56,8 @@ def run(config_pth):
     setup_seed(seed)
     data_name = config['DATA']['data_name']
     model_name = config['MODEL']['model_name']
-    dataset_name = data_name + 'Rate' + model_name
+    task = config['TRAIN']['task']
+    dataset_name = data_name + task + model_name
     num_workers = eval(config['DATA']['num_workers'])
     # data_pth = '../data/ExtendedEpinions/splited_data/MFModel/val'
     dataset_dict = {}
@@ -75,7 +76,6 @@ def run(config_pth):
             pin_memory=True
         )
     model = eval(model_name + 'Model')(config)
-    # model.apply(weight_init)
 
     ## optimizer
     lr = eval(config['OPTIM']['learning_rate'])

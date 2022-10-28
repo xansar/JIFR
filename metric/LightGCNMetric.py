@@ -12,42 +12,7 @@
 
 # import lib
 import torch
-
-class BaseMetric:
-    def __init__(self, ks, metric_name):
-        self.metric_dict = {}
-        self.metric_name = metric_name
-        self.ks = ks
-        self.init_metrics(metric_name)
-
-    def init_metrics(self, metric_name):
-        self.metric_name = metric_name
-        self.metric_dict = {}
-        for m in self.metric_name:
-            self.metric_dict[m] = {}
-            for k in self.ks:
-                self.metric_dict[m][k] = {'value': 0., 'best': 0., 'cnt': 0}
-
-    def clear_metrics(self):
-        for m in self.metric_name:
-            for k in self.ks:
-                self.metric_dict[m][k]['value'] = 0.
-                self.metric_dict[m][k]['cnt'] = 0
-
-    def compute_metrics(self, *input_):
-        pass
-
-    def get_batch_metrics(self, *input_):
-        pass
-
-    def print_best_metrics(self):
-        metric_str = ''
-        for m in self.metric_name:
-            for k in self.ks:
-                v = self.metric_dict[m][k]['best']
-                metric_str += f'best: {m}@{k}: {v:.4f}\t'
-            metric_str += '\n'
-        return metric_str
+from .BaseMetric import BaseMetric
 
 class LightGCNMetric(BaseMetric):
     def __init__(self, ks, metric_name):
@@ -73,5 +38,7 @@ class LightGCNMetric(BaseMetric):
             self.metric_dict['HR'][k]['cnt'] = -1
             if self.metric_dict['HR'][k]['value'] > self.metric_dict['HR'][k]['best']:
                 self.metric_dict['HR'][k]['best'] = self.metric_dict['HR'][k]['value']
+                if k == self.ks[-1]:
+                    self.is_save = True
             elif k == self.ks[-1] and self.metric_dict['HR'][k]['value'] < self.metric_dict['HR'][k]['best']:
                 self.is_early_stop = True

@@ -26,7 +26,7 @@ class ExtendedEpinionsRateLightGCN(DGLDataset):
         self.model_name = config['MODEL']['model_name']
         self.task = config['TRAIN']['task']
         self.data_name = config['DATA']['data_name']
-        self.data_pth = os.path.join('./data', self.data_name, 'splited_data', self.model_name)
+        self.data_pth = os.path.join('./data', self.data_name, 'splited_data')
         self.dir_pth = os.path.join(self.data_pth, self.model_name)
 
         print('=' * 20 + 'begin process' + '=' * 20)
