@@ -19,7 +19,7 @@ import json
 class ExtendedEpinionsRateMF(Dataset):
     def __init__(self, data_pth, config):
         self.config = config
-        self.user_num = eval(config['MODEL']['user_num'])
+        self.user_num = eval(config['MODEL']['pred_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.data_pth = data_pth

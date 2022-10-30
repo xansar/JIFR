@@ -18,7 +18,7 @@ class MFModel(nn.Module):
         super(MFModel, self).__init__()
         self.config = config
         self.task = config['TRAIN']['task']
-        self.user_num = eval(config['MODEL']['user_num'])
+        self.user_num = eval(config['MODEL']['pred_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.embedding_size = eval(config['MODEL']['embedding_size'])

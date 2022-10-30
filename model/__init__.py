@@ -13,3 +13,4 @@
 from .MFModel import *
 from .LightGCNModel import *
 from .loss import *
+from .MutualRecModel import *

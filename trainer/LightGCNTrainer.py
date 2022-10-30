@@ -8,8 +8,7 @@
 ------------      -------    --------    -----------
 2022/10/26 13:15   zxx      1.0         None
 """
-# !/usr/bin/env python
-# -*- encoding: utf-8 -*-
+
 import dgl
 import torch
 import numpy as np
@@ -54,7 +53,7 @@ class LightGCNTrainer(BaseTrainer):
 
         # 读取训练有关配置
         self.task = config['TRAIN']['task']
-        self.user_num = eval(config['MODEL']['user_num'])
+        self.user_num = eval(config['MODEL']['pred_user_num'])
         self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.neg_num = eval(config['DATA']['neg_num'])

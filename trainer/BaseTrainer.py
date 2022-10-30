@@ -45,9 +45,11 @@ class BaseTrainer:
 
     def _generate_metric_str(self, metric_str):
         # 根据metric结果，生成文本
-        for metric_name, k_dict in self.metric.metric_dict.items():
-            for k, v in k_dict.items():
-                metric_str += f'{metric_name}@{k}: {v["value"]:.4f}\t'
+        for t in self.metric.metric_dict.keys():
+            for m in self.metric.metric_dict[t].keys():
+                for k in self.metric.metric_dict[t][m].keys():
+                    v = self.metric.metric_dict[t][m][k]['value']
+                    metric_str += f'{t} {m}@{k}: {v:.4f}\t'
             metric_str += '\n'
         self.metric.clear_metrics()
         return metric_str

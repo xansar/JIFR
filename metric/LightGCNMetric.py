@@ -16,7 +16,6 @@ from .BaseMetric import BaseMetric
 
 class LightGCNMetric(BaseMetric):
     def __init__(self, ks, metric_name):
-        self.is_early_stop = False
         super(LightGCNMetric, self).__init__(ks, metric_name)
 
     def _compute_HR(self, total_pred):

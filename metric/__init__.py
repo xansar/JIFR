@@ -12,3 +12,4 @@
 # import lib
 from .MFMetric import *
 from .LightGCNMetric import *
+from .MutualRecMetric import *

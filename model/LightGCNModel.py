@@ -55,7 +55,7 @@ class LightGCNModel(nn.Module):
         self.embedding_size = eval(config['MODEL']['embedding_size'])
         self.layer_num = eval(config['MODEL']['layer_num'])
         self.task = config['TRAIN']['task']
-        self.user_num = eval(config['MODEL']['user_num'])
+        self.user_num = eval(config['MODEL']['pred_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.total_user_num = eval(config['MODEL']['total_user_num'])
 

@@ -12,3 +12,4 @@
 # import lib
 from .MFTrainer import *
 from .LightGCNTrainer import *
+from .MutualRecTrainer import *

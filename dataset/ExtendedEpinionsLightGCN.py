@@ -21,7 +21,7 @@ class ExtendedEpinionsRateLightGCN(DGLDataset):
     def __init__(self, config):
         self._g = None
         self.config = config
-        self.user_num = eval(config['MODEL']['user_num'])
+        self.user_num = eval(config['MODEL']['pred_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.model_name = config['MODEL']['model_name']
         self.task = config['TRAIN']['task']
