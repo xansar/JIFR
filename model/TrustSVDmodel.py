@@ -105,31 +105,31 @@ class RegLoss(nn.Module):
     def forward(self, inputs):
         b_u = inputs['b_u']
         I_u_factor = inputs['I_u_factor']
-        b_u_reg = self.lamda * torch.sum(torch.square(b_u) * I_u_factor)
+        b_u_reg = self.lamda * torch.mean(torch.square(b_u) * I_u_factor)
 
         ##
         b_i = inputs['b_i']
         # 评论过这个物品的用户数量
         U_i_factor = inputs['U_i_factor']
-        b_i_reg = self.lamda * torch.sum(torch.square(b_i) * U_i_factor)
+        b_i_reg = self.lamda * torch.mean(torch.square(b_i) * U_i_factor)
 
         ##
         p_u = inputs['p_u']
         T_u_factor = inputs['T_u_factor']
-        p_u_reg = torch.sum(torch.square(torch.norm(p_u)) * (self.lamda * I_u_factor + self.lamda_t * T_u_factor))
+        p_u_reg = torch.mean(torch.square(torch.norm(p_u)) * (self.lamda * I_u_factor + self.lamda_t * T_u_factor))
 
         ##
         q_i = inputs['q_i']
-        q_i_reg = self.lamda * torch.sum(torch.square(q_i) * U_i_factor)
+        q_i_reg = self.lamda * torch.mean(torch.square(q_i) * U_i_factor)
 
         ##
         y_i = inputs['y_i']
-        y_i_reg = self.lamda * torch.sum(torch.square(y_i) * U_i_factor)
+        y_i_reg = self.lamda * torch.mean(torch.square(y_i) * U_i_factor)
 
         ##
         w_u = inputs['w_u']
         T_u_plus_factor = inputs['T_u_plus_factor']
-        w_u_reg = self.lamda * torch.sum(torch.square(w_u) * T_u_plus_factor)
+        w_u_reg = self.lamda * torch.mean(torch.square(w_u) * T_u_plus_factor)
 
         return b_u_reg + b_i_reg + p_u_reg + q_i_reg + y_i_reg + w_u_reg
 
