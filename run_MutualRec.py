@@ -73,7 +73,15 @@ def run(config_pth):
     lr = eval(config['OPTIM']['learning_rate'])
     weight_decay = eval(config['OPTIM']['weight_decay'])
     optimizer_name = 'torch.optim.' + config['OPTIM']['optimizer']
-    optimizer = eval(optimizer_name)(lr=lr, params=model.parameters(), weight_decay=weight_decay)
+    params_dict = []
+    for n, p in model.named_parameters():
+        if 'spatial' in n:
+            params_dict.append({'params': p, 'lr':1e-3})
+        else:
+            params_dict.append({'params': p, 'lr': 1e-1})
+    # optimizer = eval(optimizer_name)(lr=lr, params=model.parameters(), weight_decay=weight_decay)
+
+    optimizer = eval(optimizer_name)(lr=lr, params=params_dict, weight_decay=weight_decay)
     lr_scheduler_name = 'torch.optim.lr_scheduler.' + config['OPTIM']['lr_scheduler']
     lr_adapt_step = eval(config['OPTIM']['lr_adapt_step'])
     lr_scheduler = eval(lr_scheduler_name)(optimizer, lr_adapt_step)

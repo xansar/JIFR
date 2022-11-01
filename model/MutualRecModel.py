@@ -127,6 +127,11 @@ class SpectralAttentionLayer(nn.Module):
             allow_zero_in_degree=True,
             activation=nn.functional.leaky_relu
         )
+        self.output = nn.Sequential(
+            nn.Linear(embedding_size, embedding_size),
+            nn.BatchNorm1d(embedding_size),
+            nn.LeakyReLU()
+        )
 
     def forward(self, social_neighbour_network, embedding, laplacian_lambda_max):
         # social network应该从total user中采样，并且是bidirected
@@ -137,7 +142,7 @@ class SpectralAttentionLayer(nn.Module):
 
         # attention
         social_preference_embedding = self.att(social_neighbour_network, h).reshape(-1, self.embedding_size)
-        return social_preference_embedding
+        return self.output(social_preference_embedding)
 
 """
 Mutualistic Layer
