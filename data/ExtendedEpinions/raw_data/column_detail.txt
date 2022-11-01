@@ -1,0 +1,15 @@
+user_rating(link):
+(user1) MY_ID This stores Id of the member who is making the trust/distrust statement
+(user2) OTHER_ID The other ID is the ID of the member being trusted/distrusted
+(weight) VALUE Value = 1 for trust and -1 for distrust
+(date) CREATION It is the date on which the trust was made
+
+ratings(rating):
+(item) OBJECT_ID The object ID is the object that is being rated. The only valid objects at the present time are the content_id of the member_content table. This means that at present this table only stores the ratings on reviews and essays
+(user) MEMBER_ID Stores the id of the member who is rating the object
+(rate) RATING Stores the 1-5 (1- Not helpful , 2 - Somewhat Helpful, 3 - Helpful 4 - Very Helpful 5- Most Helpful) rating of the object by member [There are some 6s, treat them as 5]
+STATUS The display status of the rating. 1 :- means the member has chosen not to show his rating of the object and 0 meaning the member does not mind showing his name beside the rating.
+(date) CREATION The date on which the member first rated this object
+LAST_MODIFIED The latest date on which the member modified his rating of the object
+TYPE If and when we allow more than just content rating to be stored in this table, then this column would store the type of the object being rated.
+VERTICAL_ID Vertical_id of the review.
