@@ -77,11 +77,18 @@ class TrustSVDTrainer(BaseTrainer):
             weight = data['scores'].to(self.device, non_blocking=True)
             pos_pred = self.model(data)
             rate_mse_loss, link_mse_loss, reg_loss = self.loss_func(pos_pred, weight)
-            loss = rate_mse_loss + link_mse_loss + reg_loss
+
+            u = data['users']
+            neg_sample = self.get_negative_sample(u, k=1).reshape(-1)
+            data['items'] = neg_sample
+            neg_pred = self.model(data, neg_num=1)['pred_rate'].reshape(1, -1).t()
+            neg_mse_loss = self.loss_func.mseloss(neg_pred, torch.zeros_like(neg_pred, device=self.device))
+
+            loss = rate_mse_loss + link_mse_loss + reg_loss + neg_mse_loss
             loss.backward()
             self.optimizer.step()
             self.lr_scheduler.step()
-            return loss.item(), rate_mse_loss.item(), link_mse_loss.item(), reg_loss.item()
+            return loss.item(), rate_mse_loss.item(), neg_mse_loss.item(), link_mse_loss.item(), reg_loss.item()
 
         elif mode == 'evaluate':
             with torch.no_grad():
@@ -99,12 +106,12 @@ class TrustSVDTrainer(BaseTrainer):
                 # 一定注意转置和reshape的顺序
                 neg_pred = self.model(data, neg_num=self.neg_num)['pred_rate'].reshape(self.neg_num, -1).t()
                 rate_mse_loss, link_mse_loss, reg_loss = self.loss_func(pos_pred, weight)
-                # neg_loss = self.loss_func(torch.mean(neg_pred, dim=1), torch.zeros_like(weight, device=self.device))
-                loss = rate_mse_loss + link_mse_loss + reg_loss
+                neg_mse_loss = self.loss_func.mseloss(torch.mean(neg_pred, dim=1, keepdim=True), torch.zeros_like(weight, device=self.device).reshape(-1, 1))
+                loss = rate_mse_loss + link_mse_loss + reg_loss + neg_mse_loss
                 pos_pred = pos_pred['pred_rate'].cpu().reshape(-1, 1)
                 neg_pred = neg_pred.cpu()
                 self.metric.compute_metrics(pos_pred, neg_pred)
-                return loss.item(), rate_mse_loss.item(), link_mse_loss.item(), reg_loss.item()
+                return loss.item(), rate_mse_loss.item(), neg_mse_loss.item(), link_mse_loss.item(), reg_loss.item()
         else:
             raise ValueError("Wrong Mode")
 
@@ -141,25 +148,30 @@ class TrustSVDTrainer(BaseTrainer):
         for e in range(1, epoch + 1):
             all_loss = 0.0
             all_rate_mse_loss = 0.0
+            all_neg_mse_loss = 0.0
             all_link_mse_loss = 0.0
             all_reg_loss = 0.0
+            self.total_negative_sample(k=self.neg_num)
             self.train_loader.dataset.sample_neighbours()
             for idx, data in enumerate(tqdm(self.train_loader)):
-                loss, rate_mse_loss, link_mse_loss, reg_loss = self.step(
+                loss, rate_mse_loss, neg_mse_loss, link_mse_loss, reg_loss = self.step(
                     mode='train',
                     data=data
                 )
                 all_loss += loss
                 all_rate_mse_loss += rate_mse_loss
+                all_neg_mse_loss += neg_mse_loss
                 all_link_mse_loss += link_mse_loss
                 all_reg_loss += reg_loss
             all_loss /= idx
             all_rate_mse_loss /= idx
+            all_neg_mse_loss /= idx
             all_link_mse_loss /= idx
             all_reg_loss /= idx
             metric_str = f'Train Epoch: {e}\n' \
                          f'Loss: {all_loss:.4f}\t' \
                          f'Rate MSE Loss: {all_rate_mse_loss:.4f}\t' \
+                         f'Neg MSE Loss: {all_neg_mse_loss:.4f}\t' \
                          f'Link MSE Loss: {all_link_mse_loss:.4f}\t' \
                          f'Reg Loss: {all_reg_loss:.4f}\n'
 
@@ -168,29 +180,34 @@ class TrustSVDTrainer(BaseTrainer):
                 self.metric.clear_metrics()
                 all_loss = 0.0
                 all_rate_mse_loss = 0.0
+                all_neg_mse_loss = 0.0
                 all_link_mse_loss = 0.0
                 all_reg_loss = 0.0
                 # 验证的时候也只利用训练集的邻接关系
                 self.val_loader.dataset.sample_neighbours()
                 for idx, data in enumerate(tqdm(self.val_loader)):
-                    loss, rate_mse_loss, link_mse_loss, reg_loss = self.step(
+                    loss, rate_mse_loss, neg_mse_loss, link_mse_loss, reg_loss = self.step(
                         mode='evaluate',
                         data=data
                     )
                     all_loss += loss
                     all_rate_mse_loss += rate_mse_loss
+                    all_neg_mse_loss += neg_mse_loss
                     all_link_mse_loss += link_mse_loss
                     all_reg_loss += reg_loss
                 all_loss /= idx
                 all_rate_mse_loss /= idx
+                all_neg_mse_loss /= idx
                 all_link_mse_loss /= idx
                 all_reg_loss /= idx
                 self.metric.get_batch_metrics()
                 metric_str += f'Val Epoch: {e}\n' \
                              f'Loss: {all_loss:.4f}\t' \
                              f'Rate MSE Loss: {all_rate_mse_loss:.4f}\t' \
+                             f'Neg MSE Loss: {all_neg_mse_loss:.4f}\t' \
                              f'Link MSE Loss: {all_link_mse_loss:.4f}\t' \
                              f'Reg Loss: {all_reg_loss:.4f}\n'
+                metric_str = self._generate_metric_str(metric_str)
 
             tqdm.write(self._log(metric_str))
             # 保存最好模型
@@ -211,26 +228,30 @@ class TrustSVDTrainer(BaseTrainer):
         self.metric.clear_metrics()
         all_loss = 0.0
         all_rate_mse_loss = 0.0
+        all_neg_mse_loss = 0.0
         all_link_mse_loss = 0.0
         all_reg_loss = 0.0
         self.test_loader.dataset.sample_neighbours()
         for idx, data in enumerate(tqdm(self.val_loader)):
-            loss, rate_mse_loss, link_mse_loss, reg_loss = self.step(
+            loss, rate_mse_loss, neg_mse_loss, link_mse_loss, reg_loss = self.step(
                 mode='evaluate',
                 data=data
             )
             all_loss += loss
             all_rate_mse_loss += rate_mse_loss
+            all_neg_mse_loss += neg_mse_loss
             all_link_mse_loss += link_mse_loss
             all_reg_loss += reg_loss
         all_loss /= idx
         all_rate_mse_loss /= idx
+        all_neg_mse_loss /= idx
         all_link_mse_loss /= idx
         all_reg_loss /= idx
         self.metric.get_batch_metrics()
         metric_str = f'Test Epoch: \n' \
                      f'Loss: {all_loss:.4f}\t' \
                      f'Rate MSE Loss: {all_rate_mse_loss:.4f}\t' \
+                     f'Neg MSE Loss: {all_neg_mse_loss:.4f}\t' \
                      f'Link MSE Loss: {all_link_mse_loss:.4f}\t' \
                      f'Reg Loss: {all_reg_loss:.4f}\n'
         metric_str = self._generate_metric_str(metric_str)
