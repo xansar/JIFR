@@ -36,10 +36,10 @@ class MutualRecTrainer(BaseTrainer):
         log_dir = self.config['TRAIN']['log_pth']
         if not os.path.isdir(os.path.join(log_dir, self.model_name)):
             os.mkdir(os.path.join(log_dir, self.model_name))
-        self.log_pth = os.path.join(log_dir, self.model_name, str(self.random_seed) + f'_{self.model_name}.txt')
+        self.log_pth = os.path.join(log_dir, self.model_name, f'{self.task}_{self.random_seed}_{self.model_name}.txt')
         # 设置保存地址
         save_dir = self.config['TRAIN']['save_pth']
-        self.save_pth = os.path.join(save_dir, self.model_name, f'{self.random_seed}_{self.model_name}.pth')
+        self.save_pth = os.path.join(save_dir, self.model_name, f'{self.task}_{self.random_seed}_{self.model_name}.pth')
         # 打印config
         self._print_config()
 

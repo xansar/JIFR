@@ -38,7 +38,7 @@ class TrustSVDTrainer(BaseTrainer):
         self.log_pth = os.path.join(self.log_dir, self.model_name, f'{self.task}_{self.random_seed}_{self.model_name}.txt')
         # 设置保存地址
         save_dir = self.config['TRAIN']['save_pth']
-        self.save_pth = os.path.join(save_dir, self.model_name, f'{self.random_seed}_{self.model_name}.pth')
+        self.save_pth = os.path.join(save_dir, self.model_name, f'{self.task}_{self.random_seed}_{self.model_name}.pth')
         # 打印config
         self._print_config()
 
