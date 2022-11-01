@@ -106,6 +106,11 @@ def run(config_pth):
         dataloader_dict=dataloader_dict,
         config=config
     )
+    # from line_profiler import LineProfiler
+    # p = LineProfiler()
+    # p_wrap = p(trainer.train)
+    # p_wrap()
+    # p.print_stats()
     trainer.train()
 
 if __name__ == '__main__':

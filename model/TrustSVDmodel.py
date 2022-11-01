@@ -45,13 +45,13 @@ class TrustSVDModel(nn.Module):
         self.device = config['TRAIN']['device']
 
     def forward(self, inputs, neg_num=None):
-        users = inputs['users'].to(self.device)
-        items = inputs['items'].to(self.device)
-        rated_items = inputs['rated_items'].to(self.device)
-        items_nums = inputs['items_nums'].to(self.device)
+        users = inputs['users'].to(self.device, non_blocking=True)
+        items = inputs['items'].to(self.device, non_blocking=True)
+        rated_items = inputs['rated_items'].to(self.device, non_blocking=True)
+        items_nums = inputs['items_nums'].to(self.device, non_blocking=True)
         I_u_factor = (1 / torch.sqrt(items_nums.unsqueeze(1) + 1e-8)).clamp(max=1)
-        trusts = inputs['trusts'].to(self.device)
-        trusts_nums = inputs['trusts_nums'].to(self.device)
+        trusts = inputs['trusts'].to(self.device, non_blocking=True)
+        trusts_nums = inputs['trusts_nums'].to(self.device, non_blocking=True)
         T_u_factor = (1 / torch.sqrt(trusts_nums.unsqueeze(1) + 1e-8)).clamp(max=1)
         p = self.P(users)
         q = self.Q(items)
@@ -64,8 +64,8 @@ class TrustSVDModel(nn.Module):
         user_represetation = p + I_u_factor * y + T_u_factor * w
         # 负采样预测前要处理一下，把user向量重复得跟item向量一样长
         if neg_num is not None:
-            user_represetation = user_represetation.repeat(neg_num)
-            b_u = b_u.repeat(neg_num)
+            user_represetation = user_represetation.repeat(neg_num, 1)
+            b_u = b_u.repeat(neg_num, 1)
         pred_rate = torch.sum(q * user_represetation, dim=1, keepdim=True) + b_u + b_i + self.global_bias
         res_dicet = {
             'pred_rate': pred_rate,
@@ -77,9 +77,9 @@ class TrustSVDModel(nn.Module):
             # 正则化项
             w_u = self.W(users)
             y_i = self.Y(items)
-            user_rate_i_num = inputs['user_rate_i_num'].to(self.device)
+            user_rate_i_num = inputs['user_rate_i_num'].to(self.device, non_blocking=True)
             U_i_factor = (1 / torch.sqrt(user_rate_i_num.unsqueeze(1) + 1e-8)).clamp(max=1)
-            user_trust_u_num = inputs['user_trust_u_num'].to(self.device)
+            user_trust_u_num = inputs['user_trust_u_num'].to(self.device, non_blocking=True)
             T_u_plus_factor = (1 / torch.sqrt(user_trust_u_num.unsqueeze(1) + 1e-8)).clamp(max=1)
             res_dicet.update({
                 'pred_link': pred_link,

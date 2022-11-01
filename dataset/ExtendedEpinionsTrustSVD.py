@@ -57,8 +57,6 @@ class ExtendedEpinionsRateTrustSVD(Dataset):
             num_sample = min(self.num_sample, len(user2trust_lst))
             self.cur_user2trust[str(u)] = np.random.choice(user2trust_lst, num_sample, replace=False)
 
-
-
     def __getitem__(self, idx):
         ## 用户的历史item互动记录
         ## 用户的好友记录

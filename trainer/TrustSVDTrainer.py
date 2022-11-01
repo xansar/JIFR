@@ -35,7 +35,7 @@ class TrustSVDTrainer(BaseTrainer):
         self.log_dir = self.config['TRAIN']['log_pth']
         if not os.path.isdir(os.path.join(self.log_dir, self.model_name)):
             os.mkdir(os.path.join(self.log_dir, self.model_name))
-        self.log_pth = os.path.join(self.log_dir, self.model_name, str(self.random_seed) + f'_{self.model_name}.txt')
+        self.log_pth = os.path.join(self.log_dir, self.model_name, f'{self.task}_{self.random_seed}_{self.model_name}.txt')
         # 设置保存地址
         save_dir = self.config['TRAIN']['save_pth']
         self.save_pth = os.path.join(save_dir, self.model_name, f'{self.random_seed}_{self.model_name}.pth')
@@ -74,7 +74,7 @@ class TrustSVDTrainer(BaseTrainer):
             self.model.train()
             self.optimizer.zero_grad()
             data = inputs['data']
-            weight = data['scores'].to(self.device)
+            weight = data['scores'].to(self.device, non_blocking=True)
             pos_pred = self.model(data)
             rate_mse_loss, link_mse_loss, reg_loss = self.loss_func(pos_pred, weight)
             loss = rate_mse_loss + link_mse_loss + reg_loss
@@ -87,7 +87,7 @@ class TrustSVDTrainer(BaseTrainer):
             with torch.no_grad():
                 self.model.eval()
                 data = inputs['data']
-                weight = inputs['weight'].to(self.device)
+                weight = data['scores'].to(self.device, non_blocking=True)
                 pos_pred = self.model(data)
 
                 # 负采样
@@ -97,11 +97,11 @@ class TrustSVDTrainer(BaseTrainer):
                 # 将负采样item放入data
                 data['items'] = neg_sample
                 # 一定注意转置和reshape的顺序
-                neg_pred = self.model(data).reshape(self.neg_num, -1).t()
+                neg_pred = self.model(data, neg_num=self.neg_num)['pred_rate'].reshape(self.neg_num, -1).t()
                 rate_mse_loss, link_mse_loss, reg_loss = self.loss_func(pos_pred, weight)
                 # neg_loss = self.loss_func(torch.mean(neg_pred, dim=1), torch.zeros_like(weight, device=self.device))
                 loss = rate_mse_loss + link_mse_loss + reg_loss
-                pos_pred = pos_pred.cpu().reshape(-1, 1)
+                pos_pred = pos_pred['pred_rate'].cpu().reshape(-1, 1)
                 neg_pred = neg_pred.cpu()
                 self.metric.compute_metrics(pos_pred, neg_pred)
                 return loss.item(), rate_mse_loss.item(), link_mse_loss.item(), reg_loss.item()
@@ -170,8 +170,8 @@ class TrustSVDTrainer(BaseTrainer):
                 all_rate_mse_loss = 0.0
                 all_link_mse_loss = 0.0
                 all_reg_loss = 0.0
-                # 验证的时候也用train loader是因为我们只利用训练集的邻接关系
-                self.train_loader.dataset.sample_neighbours()
+                # 验证的时候也只利用训练集的邻接关系
+                self.val_loader.dataset.sample_neighbours()
                 for idx, data in enumerate(tqdm(self.val_loader)):
                     loss, rate_mse_loss, link_mse_loss, reg_loss = self.step(
                         mode='evaluate',
@@ -186,7 +186,7 @@ class TrustSVDTrainer(BaseTrainer):
                 all_link_mse_loss /= idx
                 all_reg_loss /= idx
                 self.metric.get_batch_metrics()
-                metric_str = f'Val Epoch: {e}\n' \
+                metric_str += f'Val Epoch: {e}\n' \
                              f'Loss: {all_loss:.4f}\t' \
                              f'Rate MSE Loss: {all_rate_mse_loss:.4f}\t' \
                              f'Link MSE Loss: {all_link_mse_loss:.4f}\t' \
@@ -213,7 +213,7 @@ class TrustSVDTrainer(BaseTrainer):
         all_rate_mse_loss = 0.0
         all_link_mse_loss = 0.0
         all_reg_loss = 0.0
-        self.train_loader.dataset.sample_neighbours()
+        self.test_loader.dataset.sample_neighbours()
         for idx, data in enumerate(tqdm(self.val_loader)):
             loss, rate_mse_loss, link_mse_loss, reg_loss = self.step(
                 mode='evaluate',
