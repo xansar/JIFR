@@ -13,3 +13,4 @@
 from .ExtendedEpinionsMF import *
 from .ExtendedEpinionsLightGCN import *
 from .ExtendedEpinionsMutualRec import *
+from .ExtendedEpinionsTrustSVD import *

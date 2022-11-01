@@ -13,3 +13,4 @@
 from .MFTrainer import *
 from .LightGCNTrainer import *
 from .MutualRecTrainer import *
+from .TrustSVDTrainer import *
