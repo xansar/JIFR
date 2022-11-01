@@ -89,7 +89,9 @@ def run(config_pth):
 
     ## loss func
     loss_name = config['LOSS']['loss_name']
-    loss_func = eval(loss_name)(reduction='mean')
+    lamda = eval(config['OPTIM']['lamda'])
+    lamda_t = eval(config['OPTIM']['lamda_t'])
+    loss_func = eval(loss_name)(reduction='mean', lamda=lamda, lamda_t=lamda_t)
 
     ## metric
     ks = eval(config['METRIC']['ks'])
