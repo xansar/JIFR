@@ -17,8 +17,8 @@ import torch
 from .BaseMetric import BaseMetric
 
 class MFMetric(BaseMetric):
-    def __init__(self, ks, metric_name):
-        super(MFMetric, self).__init__(ks, metric_name)
+    def __init__(self, ks, task, metric_name):
+        super(MFMetric, self).__init__(ks, task, metric_name)
 
     def _compute_HR(self, total_pred):
         for k in self.ks:
