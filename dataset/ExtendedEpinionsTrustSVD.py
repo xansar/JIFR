@@ -69,13 +69,13 @@ class ExtendedEpinionsRateTrustSVD(Dataset):
         # 这里如果不采样，太多了
         rated_items = self.cur_user2item.get(str(u), [])
         # 用户评价过的物品的总数
-        items_num = len(rated_items)
+        items_num = len(self.user2item.get(str(u), []))
         # 评价过物品i的用户数量
         user_rate_i_num = len(self.item2user.get(str(i), []))
         # 用户的信任列表
         trusts = self.cur_user2trust.get(str(u), [])
         # 用户的信任列表长度
-        trusts_num = len(trusts)
+        trusts_num = len(self.user2trust.get(str(u), []))
         # 信任用户u的数量
         user_trust_u_num = len(self.trust2user.get(str(u), []))
         return {
@@ -102,12 +102,20 @@ class ExtendedEpinionsRateTrustSVD(Dataset):
         # 切分记录与评分
         self.rate_u_i = rate[:, :2].astype(np.int32).tolist()
         self.rate_score = rate[:, 2].astype(np.float32).tolist()
+        self.normalize(5, 0)
         self.link_u_v = link[:, :2].astype(np.int32).tolist()
         self.link_score = link[:, 2].astype(np.float32).tolist()
 
         f = open(os.path.join(self.dir_pth, 'user2v.json'), 'r')
         self.user2history = json.load(f)['user2item']
         f.close()
+
+    def normalize(self, max=None, min=None):
+        if max is None:
+            max = np.max(self.rate_score)
+        if min is None:
+            min = np.min(self.rate_score)
+        self.rate_score = ((np.array(self.rate_score) - min) / (max - min)).tolist()
 
     def inverted_list(self):
         # 读取倒排表？好像是正排表
