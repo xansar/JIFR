@@ -27,11 +27,11 @@ class MFModel(nn.Module):
             self.nodes_num = self.user_num + self.item_num
         elif self.task == 'Link':
             self.nodes_num = self.total_user_num
-        self.embedding = nn.Parameter(torch.zeros(self.nodes_num, self.embedding_size))
-        self.weight_init()
-
-    def weight_init(self):
-        nn.init.xavier_normal_(self.embedding.data)
+        self.embedding = nn.Embedding(self.nodes_num, self.embedding_size)
+    #     self.weight_init()
+    #
+    # def weight_init(self):
+    #     nn.init.xavier_normal_(self.embedding.data)
 
     def forward(self, **inputs):
         u = inputs['u']
@@ -40,8 +40,8 @@ class MFModel(nn.Module):
             v = inputs['v'] + self.user_num
         else:
             v = inputs['v']
-        u = self.embedding[u]
-        v = self.embedding[v]
+        u = self.embedding(u)
+        v = self.embedding(v)
         pred = torch.sum(u * v, dim=1)
         return pred
 

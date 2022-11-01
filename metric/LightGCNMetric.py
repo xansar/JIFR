@@ -30,14 +30,14 @@ class LightGCNMetric(BaseMetric):
         # total_pred, bsz * 101, 第一维是正样本预测值
         total_pred = torch.cat([pos_pred, neg_pred], dim=1)
         self._compute_HR(total_pred)
-
-    def get_batch_metrics(self):
-        for k in self.ks:
-            self.metric_dict['HR'][k]['value'] /= self.metric_dict['HR'][k]['cnt']
-            self.metric_dict['HR'][k]['cnt'] = -1
-            if self.metric_dict['HR'][k]['value'] > self.metric_dict['HR'][k]['best']:
-                self.metric_dict['HR'][k]['best'] = self.metric_dict['HR'][k]['value']
-                if k == self.ks[-1]:
-                    self.is_save = True
-            elif k == self.ks[-1] and self.metric_dict['HR'][k]['value'] < self.metric_dict['HR'][k]['best']:
-                self.is_early_stop = True
+    #
+    # def get_batch_metrics(self):
+    #     for k in self.ks:
+    #         self.metric_dict['HR'][k]['value'] /= self.metric_dict['HR'][k]['cnt']
+    #         self.metric_dict['HR'][k]['cnt'] = -1
+    #         if self.metric_dict['HR'][k]['value'] > self.metric_dict['HR'][k]['best']:
+    #             self.metric_dict['HR'][k]['best'] = self.metric_dict['HR'][k]['value']
+    #             if k == self.ks[-1]:
+    #                 self.is_save = True
+    #         elif k == self.ks[-1] and self.metric_dict['HR'][k]['value'] < self.metric_dict['HR'][k]['best']:
+    #             self.is_early_stop = True
