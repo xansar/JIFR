@@ -81,12 +81,11 @@ class TrustSVDTrainer(BaseTrainer):
 
             u = data['users']
             # 一定注意转置和reshape的顺序
-            neg_num = self.train_neg_num
-            neg_sample = self.get_negative_sample(u, neg_num).t().reshape(-1)
+            neg_sample = self.get_negative_sample(u, self.train_neg_num).t().reshape(-1)
             # 将负采样item放入data
             data['items'] = neg_sample
             # 一定注意转置和reshape的顺序
-            neg_pred = self.model(data, neg_num=neg_num)['pred_rate'].reshape(neg_num, -1).t()
+            neg_pred = self.model(data, neg_num=self.train_neg_num)['pred_rate'].reshape(self.train_neg_num, -1).t()
             neg_mse_loss = self.loss_func.mseloss(torch.mean(neg_pred, dim=1, keepdim=True),
                                                   torch.zeros_like(weight, device=self.device).reshape(-1, 1))
 
@@ -116,7 +115,7 @@ class TrustSVDTrainer(BaseTrainer):
                 loss = rate_mse_loss + link_mse_loss + reg_loss + neg_mse_loss
                 pos_pred = pos_pred['pred_rate'].cpu().reshape(-1, 1)
                 neg_pred = neg_pred.cpu()
-                self.metric.compute_metrics(pos_pred, neg_pred)
+                self.metric.compute_metrics(pos_pred, neg_pred, task=self.task)
                 return loss.item(), rate_mse_loss.item(), neg_mse_loss.item(), link_mse_loss.item(), reg_loss.item()
         else:
             raise ValueError("Wrong Mode")
