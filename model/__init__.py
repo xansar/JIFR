@@ -15,3 +15,4 @@ from .LightGCNModel import *
 from .loss import *
 from .MutualRecModel import *
 from .TrustSVDmodel import *
+from .SVDPPModel import *

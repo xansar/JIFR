@@ -1,0 +1,114 @@
+==========Config==========
+TRAIN: 
+	epoch: 150
+	device: cuda
+	log_pth: ./log/
+	save_pth: ./save/
+	random_seed: 4565
+	mode: debug
+	eval_step: 5
+	warm_epoch: 25
+	task: Rate
+OPTIM: 
+	optimizer: AdamW
+	lr_scheduler: CosineAnnealingWarmRestarts
+	lr_adapt_step: 10
+	learning_rate: 1e-2
+	weight_decay: 0
+	lamda: 5e-4
+	lamda_t: 5e-4
+LOSS: 
+	loss_name: TrustSVDLoss
+MODEL: 
+	model_name: SVDPP
+	pred_user_num: 1598
+	total_user_num: 19790
+	item_num: 24985
+	embedding_size: 10
+	global_bias: 4.89
+	num_sample: 20
+DATA: 
+	data_name: ExtendedEpinions
+	train_batch_size: 2048
+	val_batch_size: 2048
+	test_batch_size: 2048
+	num_workers: 7
+	neg_num: 100
+METRIC: 
+	ks: [3, 5, 10]
+	metric_name: ['HR']
+=========================
+
+==========TRAIN BEGIN==========
+Train Epoch: 1
+Loss: 9.4797	Rate MSE Loss: 7.6369	Neg MSE Loss: 1.1992	Link MSE Loss: 8.4294	Reg Loss: 0.6436
+
+Train Epoch: 2
+Loss: 1.1324	Rate MSE Loss: 0.8649	Neg MSE Loss: 0.0728	Link MSE Loss: 3.5706	Reg Loss: 0.1947
+
+Train Epoch: 3
+Loss: 0.4163	Rate MSE Loss: 0.2949	Neg MSE Loss: 0.0371	Link MSE Loss: 2.0328	Reg Loss: 0.0843
+
+Train Epoch: 4
+Loss: 0.2050	Rate MSE Loss: 0.1395	Neg MSE Loss: 0.0214	Link MSE Loss: 1.5878	Reg Loss: 0.0441
+
+Train Epoch: 5
+Loss: 0.1403	Rate MSE Loss: 0.0923	Neg MSE Loss: 0.0215	Link MSE Loss: 1.3553	Reg Loss: 0.0266
+Val Epoch: 5
+Loss: 1.7013	Rate MSE Loss: 0.7438	Neg MSE Loss: 0.9404	Link MSE Loss: 1.1371	Reg Loss: 0.0172
+Rate HR@3: 0.0291	Rate HR@5: 0.0556	Rate HR@10: 0.1183	
+
+Train Epoch: 6
+Loss: 0.1148	Rate MSE Loss: 0.0758	Neg MSE Loss: 0.0215	Link MSE Loss: 1.2283	Reg Loss: 0.0176
+
+Train Epoch: 7
+Loss: 0.0930	Rate MSE Loss: 0.0645	Neg MSE Loss: 0.0161	Link MSE Loss: 1.1487	Reg Loss: 0.0124
+
+Train Epoch: 8
+Loss: 0.0795	Rate MSE Loss: 0.0561	Neg MSE Loss: 0.0145	Link MSE Loss: 1.0927	Reg Loss: 0.0089
+
+Train Epoch: 9
+Loss: 0.0771	Rate MSE Loss: 0.0514	Neg MSE Loss: 0.0189	Link MSE Loss: 1.0610	Reg Loss: 0.0069
+
+Train Epoch: 10
+Loss: 0.0687	Rate MSE Loss: 0.0466	Neg MSE Loss: 0.0166	Link MSE Loss: 1.0513	Reg Loss: 0.0055
+Val Epoch: 10
+Loss: 1.1728	Rate MSE Loss: 0.2603	Neg MSE Loss: 0.9101	Link MSE Loss: 1.0172	Reg Loss: 0.0024
+Rate HR@3: 0.0353	Rate HR@5: 0.0512	Rate HR@10: 0.1015	
+
+Train Epoch: 11
+Loss: 0.0587	Rate MSE Loss: 0.0414	Neg MSE Loss: 0.0130	Link MSE Loss: 1.0319	Reg Loss: 0.0043
+
+Train Epoch: 12
+Loss: 0.0569	Rate MSE Loss: 0.0396	Neg MSE Loss: 0.0138	Link MSE Loss: 1.0318	Reg Loss: 0.0036
+
+Train Epoch: 13
+Loss: 0.0548	Rate MSE Loss: 0.0362	Neg MSE Loss: 0.0156	Link MSE Loss: 1.0219	Reg Loss: 0.0030
+
+Train Epoch: 14
+Loss: 0.0449	Rate MSE Loss: 0.0316	Neg MSE Loss: 0.0110	Link MSE Loss: 1.0171	Reg Loss: 0.0023
+
+Train Epoch: 15
+Loss: 0.0406	Rate MSE Loss: 0.0286	Neg MSE Loss: 0.0101	Link MSE Loss: 1.0090	Reg Loss: 0.0019
+Val Epoch: 15
+Loss: 0.9012	Rate MSE Loss: 0.0665	Neg MSE Loss: 0.8339	Link MSE Loss: 1.0107	Reg Loss: 0.0007
+Rate HR@3: 0.0432	Rate HR@5: 0.0565	Rate HR@10: 0.1174	
+
+Train Epoch: 16
+Loss: 0.0400	Rate MSE Loss: 0.0262	Neg MSE Loss: 0.0122	Link MSE Loss: 1.0082	Reg Loss: 0.0016
+
+Train Epoch: 17
+Loss: 0.0333	Rate MSE Loss: 0.0229	Neg MSE Loss: 0.0092	Link MSE Loss: 1.0090	Reg Loss: 0.0013
+
+Train Epoch: 18
+Loss: 0.0304	Rate MSE Loss: 0.0207	Neg MSE Loss: 0.0086	Link MSE Loss: 1.0027	Reg Loss: 0.0011
+
+Train Epoch: 19
+Loss: 0.0317	Rate MSE Loss: 0.0200	Neg MSE Loss: 0.0106	Link MSE Loss: 1.0029	Reg Loss: 0.0010
+
+Train Epoch: 20
+Loss: 0.0288	Rate MSE Loss: 0.0186	Neg MSE Loss: 0.0094	Link MSE Loss: 1.0017	Reg Loss: 0.0009
+Val Epoch: 20
+Loss: 0.8025	Rate MSE Loss: 0.0240	Neg MSE Loss: 0.7781	Link MSE Loss: 1.0078	Reg Loss: 0.0004
+Rate HR@3: 0.0327	Rate HR@5: 0.0697	Rate HR@10: 0.1642	
+
