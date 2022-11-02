@@ -60,6 +60,7 @@ class TrustSVDTrainer(BaseTrainer):
         self.metric = metric
         self.user2history = self.train_loader.dataset.user2history
         self.neg_num = eval(config['DATA']['neg_num'])
+        self.train_neg_num = eval(config['DATA']['train_neg_num'])
 
         self.data_name = config['DATA']['data_name']
         self.device = config['TRAIN']['device']
@@ -79,10 +80,15 @@ class TrustSVDTrainer(BaseTrainer):
             rate_mse_loss, link_mse_loss, reg_loss = self.loss_func(pos_pred, weight)
 
             u = data['users']
-            neg_sample = self.get_negative_sample(u, k=1).reshape(-1)
+            # 一定注意转置和reshape的顺序
+            neg_num = self.train_neg_num
+            neg_sample = self.get_negative_sample(u, neg_num).t().reshape(-1)
+            # 将负采样item放入data
             data['items'] = neg_sample
-            neg_pred = self.model(data, neg_num=1)['pred_rate'].reshape(1, -1).t()
-            neg_mse_loss = self.loss_func.mseloss(neg_pred, torch.zeros_like(neg_pred, device=self.device))
+            # 一定注意转置和reshape的顺序
+            neg_pred = self.model(data, neg_num=neg_num)['pred_rate'].reshape(neg_num, -1).t()
+            neg_mse_loss = self.loss_func.mseloss(torch.mean(neg_pred, dim=1, keepdim=True),
+                                                  torch.zeros_like(weight, device=self.device).reshape(-1, 1))
 
             loss = rate_mse_loss + link_mse_loss + reg_loss + neg_mse_loss
             loss.backward()

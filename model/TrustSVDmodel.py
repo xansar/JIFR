@@ -72,7 +72,8 @@ class TrustSVDModel(nn.Module):
         }
         if neg_num is None: # 正样本计算时返回正则化项需要的变量
             # trust矩阵分解
-            w_v = self.W(trusts[:, 0])
+            idx = torch.randint(0, trusts.shape[1], (trusts.shape[0], 1), device=trusts.device)
+            w_v = self.W(trusts.gather(-1, idx).reshape(-1))
             pred_link = torch.sum(w_v * p, dim=1)
             # 正则化项
             w_u = self.W(users)
