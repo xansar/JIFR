@@ -60,6 +60,7 @@ class MFTrainer(BaseTrainer):
         self.metric = metric
         self.user2history = self.train_loader.dataset.user2history
         self.neg_num = eval(config['DATA']['neg_num'])
+        self.train_neg_num = eval(config['DATA']['train_neg_num'])
 
         self.data_name = config['DATA']['data_name']
         self.device = config['TRAIN']['device']
@@ -79,18 +80,18 @@ class MFTrainer(BaseTrainer):
             self.model.train()
             self.optimizer.zero_grad()
 
-            neg_sample = self.get_negative_sample(u, k=1).reshape(-1)
+            neg_sample = self.get_negative_sample(u, k=self.train_neg_num).t().reshape(-1)
             pos_pred = self.model(
                 u=u,
                 v=v
             )
             neg_pred = self.model(
-                u=u,
-                v=neg_sample
-            )
+                u=u.repeat(self.train_neg_num),
+                v=neg_sample.to(self.device)
+            ).reshape(self.train_neg_num, -1).t()
             loss = self.loss_func(pos_pred, weight)
-            neg_loss = self.loss_func(neg_pred, torch.zeros_like(weight, device=self.device))
-            loss = loss * 0.5 + neg_loss * 0.5
+            neg_loss = self.loss_func(torch.mean(neg_pred, dim=1), torch.zeros_like(weight, device=self.device))
+            loss = loss + neg_loss
             loss.backward()
             self.optimizer.step()
             self.lr_scheduler.step()
@@ -112,14 +113,14 @@ class MFTrainer(BaseTrainer):
                 # 一定注意转置和reshape的顺序
                 neg_pred = self.model(
                     u=u.repeat(self.neg_num),
-                    v=neg_sample
+                    v=neg_sample.to(self.device)
                 ).reshape(self.neg_num, -1).t()
                 loss = self.loss_func(pos_pred, weight)
                 neg_loss = self.loss_func(torch.mean(neg_pred, dim=1), torch.zeros_like(weight, device=self.device))
-                loss = loss * 0.5 + neg_loss * 0.5
+                loss = loss + neg_loss
                 pos_pred = pos_pred.cpu().reshape(-1, 1)
                 neg_pred = neg_pred.cpu()
-                self.metric.compute_metrics(pos_pred, neg_pred)
+                self.metric.compute_metrics(pos_pred, neg_pred, task=self.task)
                 return loss.item()
         else:
             raise ValueError("Wrong Mode")
