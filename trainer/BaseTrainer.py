@@ -50,7 +50,7 @@ class BaseTrainer:
                 for k in self.metric.metric_dict[t][m].keys():
                     v = self.metric.metric_dict[t][m][k]['value']
                     metric_str += f'{t} {m}@{k}: {v:.4f}\t'
-            metric_str += '\n'
+                metric_str += '\n'
         self.metric.clear_metrics()
         return metric_str
 

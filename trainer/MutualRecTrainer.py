@@ -28,6 +28,7 @@ class MutualRecTrainer(BaseTrainer):
             config,
     ):
         super(MutualRecTrainer, self).__init__()
+        self.task = config['TRAIN']['task']
 
         self.config = config
         self.random_seed = eval(self.config['TRAIN']['random_seed'])
@@ -57,7 +58,6 @@ class MutualRecTrainer(BaseTrainer):
         self.test_consumption_size = dataset.test_consumption_size
 
         # 读取训练有关配置
-        self.task = config['TRAIN']['task']
         self.pred_user_num = eval(config['MODEL']['pred_user_num'])
         self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])

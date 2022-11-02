@@ -44,8 +44,12 @@ class BaseMetric:
                     self.metric_dict[t][m][k]['value'] = 0.
                     self.metric_dict[t][m][k]['cnt'] = 0
 
-    def compute_metrics(self, *input_):
-        pass
+    def compute_metrics(self, *input_, task):
+        pos_pred, neg_pred = input_
+        # total_pred, bsz * 101, 第一维是正样本预测值
+        total_pred = torch.cat([pos_pred, neg_pred], dim=1)
+        for m in self.metric_name:
+            eval(f'self._compute_{m}')(total_pred, task)
 
     def get_batch_metrics(self):
         for t in self.task_lst:
@@ -69,3 +73,20 @@ class BaseMetric:
                     metric_str += f'{t} best: {m}@{k}: {v:.4f}\t'
                 metric_str += '\n'
         return metric_str
+
+    def _compute_HR(self, total_pred, task):
+        for k in self.ks:
+            _, topk_id = torch.topk(total_pred, k)
+            # 0位置就是正样本
+            hit = (topk_id == 0).count_nonzero(dim=1).clamp(max=1).sum()
+            self.metric_dict[task]['HR'][k]['value'] = hit.item()
+            self.metric_dict[task]['HR'][k]['cnt'] = total_pred.shape[0]
+
+    def _compute_nDCG(self, total_pred, task):
+        for k in self.ks:
+            _, topk_id = torch.topk(total_pred, k)
+            # 0位置就是正样本
+            value, idx = torch.topk((topk_id == 0).int(), 1)
+            nDCG = (value / torch.log2(idx + 2)).sum()  # 这里加2是因为idx从0开始计数
+            self.metric_dict[task]['nDCG'][k]['value'] = nDCG.item()
+            self.metric_dict[task]['nDCG'][k]['cnt'] = total_pred.shape[0]

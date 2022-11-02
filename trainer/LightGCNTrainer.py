@@ -29,6 +29,7 @@ class LightGCNTrainer(BaseTrainer):
             config,
     ):
         super(LightGCNTrainer, self).__init__()
+        self.task = config['TRAIN']['task']
 
         self.config = config
         self.random_seed = eval(self.config['TRAIN']['random_seed'])
@@ -52,7 +53,6 @@ class LightGCNTrainer(BaseTrainer):
         self.val_size = dataset.val_size
 
         # 读取训练有关配置
-        self.task = config['TRAIN']['task']
         self.user_num = eval(config['MODEL']['pred_user_num'])
         self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
@@ -143,7 +143,7 @@ class LightGCNTrainer(BaseTrainer):
                 # 注意转置的位置，一定先reshape再转置，否则neg与pos无法对应
                 neg_pred = self.model.predictor(neg_g, embedding).reshape(self.neg_num, -1).t()
                 loss = self.loss_func(pos_pred.reshape(-1), torch.mean(neg_pred, dim=1))
-                self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu())
+                self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu(), task=self.task)
                 return loss.item()
         else:
             raise ValueError("Wrong Mode")
