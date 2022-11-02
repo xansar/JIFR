@@ -60,6 +60,7 @@ class TrustSVDTrainer(BaseTrainer):
         self.metric = metric
         self.user2history = self.train_loader.dataset.user2history
         self.neg_num = eval(config['DATA']['neg_num'])
+        self.train_neg_num = eval(config['DATA']['train_neg_num'])
 
         self.data_name = config['DATA']['data_name']
         self.device = config['TRAIN']['device']
@@ -80,7 +81,7 @@ class TrustSVDTrainer(BaseTrainer):
 
             u = data['users']
             # 一定注意转置和reshape的顺序
-            neg_num = 4
+            neg_num = self.train_neg_num
             neg_sample = self.get_negative_sample(u, neg_num).t().reshape(-1)
             # 将负采样item放入data
             data['items'] = neg_sample
