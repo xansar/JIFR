@@ -32,7 +32,6 @@ class TrustSVDModel(nn.Module):
         ## 物品显式
         self.Q = nn.Embedding(self.item_num, self.embedding_size)
         ## 用户隐式
-        self.Z=nn.Embedding(self.user_num,self.embedding_size)
         self.W = nn.Embedding(self.total_user_num + 1, self.embedding_size, padding_idx=self.total_user_num)
         ## 物品隐式
         self.Y = nn.Embedding(self.item_num + 1, self.embedding_size, padding_idx=self.item_num)
@@ -62,12 +61,12 @@ class TrustSVDModel(nn.Module):
 
         b_u = self.B_u(users)
         b_i = self.B_i(items)
-        user_represetation = p + I_u_factor * y + T_u_factor * w
+        user_represetation = p 
         # 负采样预测前要处理一下，把user向量重复得跟item向量一样长
         if neg_num is not None:
             user_represetation = user_represetation.repeat(neg_num, 1)
             b_u = b_u.repeat(neg_num, 1)
-        pred_rate = torch.sum(q * user_represetation, dim=1, keepdim=True) + b_u + b_i + self.global_bias
+        pred_rate = torch.sum(q * user_represetation, dim=1, keepdim=True)
         res_dicet = {
             'pred_rate': pred_rate,
         }
@@ -104,21 +103,12 @@ class RegLoss(nn.Module):
         self.lamda_t = lamda_t
 
     def forward(self, inputs):
-        b_u = inputs['b_u']
-        I_u_factor = inputs['I_u_factor']
-        b_u_reg = self.lamda * torch.mean(torch.square(b_u) * I_u_factor)
-
-        ##
-        b_i = inputs['b_i']
-        # 评论过这个物品的用户数量
-        U_i_factor = inputs['U_i_factor']
-        b_i_reg = self.lamda * torch.mean(torch.square(b_i) * U_i_factor)
 
         ##
         p_u = inputs['p_u']
         T_u_factor = inputs['T_u_factor']
-        p_u_reg = torch.mean(torch.square(torch.norm(p_u)) * (self.lamda * I_u_factor + self.lamda_t * T_u_factor))
-
+        p_u_reg = torch.mean(torch.square(torch.norm(p_u)) * (self.lamda * I_u_factor))
+ 
         ##
         q_i = inputs['q_i']
         q_i_reg = self.lamda * torch.mean(torch.square(q_i) * U_i_factor)
@@ -132,7 +122,7 @@ class RegLoss(nn.Module):
         T_u_plus_factor = inputs['T_u_plus_factor']
         w_u_reg = self.lamda * torch.mean(torch.square(w_u) * T_u_plus_factor)
 
-        return b_u_reg + b_i_reg + p_u_reg + q_i_reg + y_i_reg + w_u_reg
+        return p_u_reg + q_i_reg + w_u_reg
 
 if __name__ == '__main__':
     from dataset import Epinions, collate_fn
