@@ -112,3 +112,46 @@ Val Epoch: 20
 Loss: 0.8025	Rate MSE Loss: 0.0240	Neg MSE Loss: 0.7781	Link MSE Loss: 1.0078	Reg Loss: 0.0004
 Rate HR@3: 0.0327	Rate HR@5: 0.0697	Rate HR@10: 0.1642	
 
+Train Epoch: 21
+Loss: 0.0251	Rate MSE Loss: 0.0167	Neg MSE Loss: 0.0077	Link MSE Loss: 1.0016	Reg Loss: 0.0007
+
+Train Epoch: 22
+Loss: 0.0269	Rate MSE Loss: 0.0170	Neg MSE Loss: 0.0092	Link MSE Loss: 0.9994	Reg Loss: 0.0007
+
+Train Epoch: 23
+Loss: 0.0266	Rate MSE Loss: 0.0165	Neg MSE Loss: 0.0094	Link MSE Loss: 0.9995	Reg Loss: 0.0007
+
+Train Epoch: 24
+Loss: 0.0241	Rate MSE Loss: 0.0156	Neg MSE Loss: 0.0079	Link MSE Loss: 0.9992	Reg Loss: 0.0007
+
+Train Epoch: 25
+Loss: 0.0254	Rate MSE Loss: 0.0158	Neg MSE Loss: 0.0089	Link MSE Loss: 1.0003	Reg Loss: 0.0007
+Val Epoch: 25
+Loss: 0.7927	Rate MSE Loss: 0.0169	Neg MSE Loss: 0.7754	Link MSE Loss: 1.0105	Reg Loss: 0.0004
+Rate HR@3: 0.0997	Rate HR@5: 0.1571	Rate HR@10: 0.2630	
+
+Train Epoch: 26
+Loss: 0.0264	Rate MSE Loss: 0.0160	Neg MSE Loss: 0.0097	Link MSE Loss: 0.9988	Reg Loss: 0.0007
+
+Train Epoch: 27
+Loss: 0.0241	Rate MSE Loss: 0.0151	Neg MSE Loss: 0.0084	Link MSE Loss: 0.9997	Reg Loss: 0.0006
+
+Train Epoch: 28
+Loss: 0.0236	Rate MSE Loss: 0.0147	Neg MSE Loss: 0.0082	Link MSE Loss: 0.9992	Reg Loss: 0.0006
+
+Train Epoch: 29
+Loss: 0.0254	Rate MSE Loss: 0.0155	Neg MSE Loss: 0.0093	Link MSE Loss: 0.9980	Reg Loss: 0.0007
+
+Train Epoch: 30
+Loss: 0.0245	Rate MSE Loss: 0.0152	Neg MSE Loss: 0.0086	Link MSE Loss: 0.9994	Reg Loss: 0.0007
+Val Epoch: 30
+Loss: 0.7720	Rate MSE Loss: 0.0151	Neg MSE Loss: 0.7565	Link MSE Loss: 1.0098	Reg Loss: 0.0003
+Rate HR@3: 0.0635	Rate HR@5: 0.1315	Rate HR@10: 0.2374	
+
+Early Stop!
+Rate best: HR@3: 0.0997	Rate best: HR@5: 0.1571	Rate best: HR@10: 0.2630	
+
+Test Epoch: 
+Loss: 0.7902	Rate MSE Loss: 0.0173	Neg MSE Loss: 0.7725	Link MSE Loss: 1.0101	Reg Loss: 0.0004
+Rate HR@3: 0.0953	Rate HR@5: 0.1439	Rate HR@10: 0.2692	
+
