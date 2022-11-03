@@ -16,3 +16,4 @@ from .loss import *
 from .MutualRecModel import *
 from .TrustSVDmodel import *
 from .SVDPPModel import *
+from .SorecModel import *

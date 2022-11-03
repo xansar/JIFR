@@ -15,3 +15,4 @@ from .LightGCNMetric import *
 from .MutualRecMetric import *
 from .TrustSVDMetric import *
 from .SVDPPMetric import *
+from .SorecMetric import *

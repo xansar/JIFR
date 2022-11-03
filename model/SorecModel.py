@@ -11,9 +11,9 @@
 import torch
 import torch.nn as nn
 
-class TrustSVDModel(nn.Module):
+class SorecModel(nn.Module):
     def __init__(self, config):
-        super(TrustSVDModel, self).__init__()
+        super(SorecModel, self).__init__()
         self.config = config
         self.task = config['TRAIN']['task']
         self.user_num = eval(config['MODEL']['pred_user_num'])
@@ -55,7 +55,6 @@ class TrustSVDModel(nn.Module):
         T_u_factor = (1 / torch.sqrt(trusts_nums.unsqueeze(1) + 1e-8)).clamp(max=1)
         p = self.P(users)
         q = self.Q(items)
-
         w = torch.sum(self.W(trusts), dim=1)
         y = torch.sum(self.Y(rated_items), dim=1)
 
@@ -81,6 +80,7 @@ class TrustSVDModel(nn.Module):
             U_i_factor = (1 / torch.sqrt(user_rate_i_num.unsqueeze(1) + 1e-8)).clamp(max=1)
             user_trust_u_num = inputs['user_trust_u_num'].to(self.device, non_blocking=True)
             T_u_plus_factor = (1 / torch.sqrt(user_trust_u_num.unsqueeze(1) + 1e-8)).clamp(max=1)
+            print(user_rate_i_num[:5],T_u_plus_factor[:5])
             res_dicet.update({
                 'pred_link': pred_link,
                 'b_u': b_u,
@@ -130,7 +130,7 @@ if __name__ == '__main__':
     from torch.utils.data import DataLoader
     dataloader = DataLoader(dataset, batch_size=2048, shuffle=True, collate_fn=collate_fn, pin_memory=True, num_workers=2)
     device = 'cuda'
-    model = TrustSVD(embedding_size=10, device=device, global_bias=3.6).to(device)
+    model = SorecModel(embedding_size=10, device=device, global_bias=3.6).to(device)
     loss_func = nn.MSELoss().to(device)
     reg_func = RegLoss().to(device)
     optimizer = torch.optim.Adam(lr=1e-3, params=model.parameters())

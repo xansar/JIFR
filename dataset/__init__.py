@@ -15,3 +15,4 @@ from .ExtendedEpinionsLightGCN import *
 from .ExtendedEpinionsMutualRec import *
 from .ExtendedEpinionsTrustSVD import *
 from .ExtendedEpinionsSVDPP import *
+from .ExtendedEpinionsSorec import *
