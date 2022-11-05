@@ -73,7 +73,7 @@ def run(config_pth):
         etype = dataset[0].etypes
         model = eval(model_name + 'Model')(config, etype)
     else:
-        raise KeyError("Wrong Model Name!!!")
+        raise ValueError("Wrong Model Name!!!")
     # model.apply(weight_init)
 
     # optimizer
