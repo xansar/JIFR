@@ -90,7 +90,7 @@ def run(config_pth):
     # metric
     ks = eval(config['METRIC']['ks'])
     metric_name = eval(config['METRIC']['metric_name'])
-    metric = eval(model_name + 'Metric')(ks=ks, task=task, metric_name=metric_name)
+    metric = BaseMetric(ks=ks, task=task, metric_name=metric_name)
     # trainer
     trainer = eval(model_name + 'Trainer')(
         model=model,
