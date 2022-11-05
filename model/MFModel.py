@@ -27,7 +27,7 @@ class HeteroDotProductPredictor(nn.Module):
 
 
 class MFModel(nn.Module):
-    def __init__(self, config, rel_names):
+    def __init__(self, config):
         super(MFModel, self).__init__()
         self.config = config
         self.embedding_size = eval(config['MODEL']['embedding_size'])
