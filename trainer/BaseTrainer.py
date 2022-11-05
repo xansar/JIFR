@@ -19,8 +19,25 @@ import os
 BaseTrainer主要用来写一些通用的函数，比如打印config之类
 """
 class BaseTrainer:
-    def __init__(self):
-        pass
+    def __init__(self, config):
+        self.task = config['TRAIN']['task']
+
+        self.config = config
+        self.random_seed = eval(self.config['TRAIN']['random_seed'])
+        # 设置log地址
+        self.model_name = self.config['MODEL']['model_name']
+        self.data_name = config['DATA']['data_name']
+        log_dir = self.config['TRAIN']['log_pth']
+        if not os.path.isdir(os.path.join(log_dir, self.model_name, self.data_name)):
+            os.makedirs(os.path.join(log_dir, self.model_name, self.data_name))
+        self.log_pth = os.path.join(log_dir, self.model_name, self.data_name, f'{self.task}_{self.random_seed}_{self.model_name}.txt')
+        # 设置保存地址
+        save_dir = self.config['TRAIN']['save_pth']
+        if not os.path.isdir(os.path.join(save_dir, self.model_name, self.data_name)):
+            os.makedirs(os.path.join(save_dir, self.model_name, self.data_name))
+        self.save_pth = os.path.join(save_dir, self.model_name, self.data_name, f'{self.task}_{self.random_seed}_{self.model_name}.pth')
+        # 打印config
+        self._print_config()
 
     def _print_config(self):
         # 用来打印config信息

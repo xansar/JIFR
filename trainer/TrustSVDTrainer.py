@@ -30,25 +30,8 @@ class TrustSVDTrainer(BaseTrainer):
             dataset,
             config,
     ):
-        super(TrustSVDTrainer, self).__init__()
-        self.task = config['TRAIN']['task']
-
-        self.config = config
-        self.random_seed = eval(self.config['TRAIN']['random_seed'])
-        # 设置log地址
-        self.model_name = self.config['MODEL']['model_name']
-        log_dir = self.config['TRAIN']['log_pth']
-        if not os.path.isdir(os.path.join(log_dir, self.model_name)):
-            os.mkdir(os.path.join(log_dir, self.model_name))
-        self.log_pth = os.path.join(log_dir, self.model_name, f'{self.task}_{self.random_seed}_{self.model_name}.txt')
-        # 设置保存地址
-        save_dir = self.config['TRAIN']['save_pth']
-        self.save_pth = os.path.join(save_dir, self.model_name, f'{self.task}_{self.random_seed}_{self.model_name}.pth')
-        # 打印config
-        self._print_config()
-
+        super(TrustSVDTrainer, self).__init__(config)
         # 读取数据
-        self.data_name = config['DATA']['data_name']
         self.dataset = dataset
         self.g = dataset[0]
         self.train_size = dataset.train_size
