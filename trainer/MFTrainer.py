@@ -1,18 +1,21 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 """
-@File    :   ExtendedEpinionsMF.py
+@File    :   MFTrainer.py
 @Contact :   xansar@ruc.edu.cn
 
 @Modify Time      @Author    @Version    @Desciption
 ------------      -------    --------    -----------
-2022/10/24 21:30   zxx      1.0         None
+2022/11/4 21:19   zxx      1.0         None
 """
+
+# import lib
+
+import dgl
 import torch
 import numpy as np
 from tqdm import tqdm, trange
 import os
-import json
 
 from .BaseTrainer import BaseTrainer
 
@@ -24,170 +27,144 @@ class MFTrainer(BaseTrainer):
             optimizer: torch.optim.Optimizer,
             lr_scheduler,
             metric,
-            dataloader_dict,
+            dataset,
             config,
     ):
         super(MFTrainer, self).__init__()
+        self.task = config['TRAIN']['task']
+
         self.config = config
         self.random_seed = eval(self.config['TRAIN']['random_seed'])
+        # 设置log地址
         self.model_name = self.config['MODEL']['model_name']
-        self.task = self.config['TRAIN']['task']
-        self.log_dir = self.config['TRAIN']['log_pth']
-        if not os.path.isdir(os.path.join(self.log_dir, self.model_name)):
-            os.mkdir(os.path.join(self.log_dir, self.model_name))
-        self.log_pth = os.path.join(self.log_dir, self.model_name, f'{self.task}_{self.random_seed}_{self.model_name}.txt')
+        log_dir = self.config['TRAIN']['log_pth']
+        if not os.path.isdir(os.path.join(log_dir, self.model_name)):
+            os.mkdir(os.path.join(log_dir, self.model_name))
+        self.log_pth = os.path.join(log_dir, self.model_name, f'{self.task}_{self.random_seed}_{self.model_name}.txt')
         # 设置保存地址
         save_dir = self.config['TRAIN']['save_pth']
         self.save_pth = os.path.join(save_dir, self.model_name, f'{self.task}_{self.random_seed}_{self.model_name}.pth')
         # 打印config
         self._print_config()
 
-        self.train_loader = dataloader_dict['train']
-        # self.train_link_loader = train_link_loader
-        self.val_loader = dataloader_dict['val']
-        # self.val_link_loader = val_link_loader
-        self.test_loader = dataloader_dict['test']
-        # self.test_link_loader = test_link_loader
+        # 读取数据
+        self.data_name = config['DATA']['data_name']
+        self.dataset = dataset
+        self.g = dataset[0]
+        self.train_size = dataset.train_size
+        self.val_size = dataset.val_size
 
+        # 读取训练有关配置
         self.user_num = eval(config['MODEL']['pred_user_num'])
-        self.item_num = eval(config['MODEL']['item_num'])
         self.total_user_num = eval(config['MODEL']['total_user_num'])
+        self.item_num = eval(config['MODEL']['item_num'])
+        self.neg_num = eval(config['DATA']['neg_num'])
+        self.train_neg_num = eval(config['DATA']['train_neg_num'])
         self.model = model
         self.loss_func = loss_func
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
-
-        self.metric = metric
-        self.user2history = self.train_loader.dataset.user2history
-        self.neg_num = eval(config['DATA']['neg_num'])
-        self.train_neg_num = eval(config['DATA']['train_neg_num'])
-
-        self.data_name = config['DATA']['data_name']
-        self.device = config['TRAIN']['device']
         self.eval_step = eval(config['TRAIN']['eval_step'])
         self.warm_epoch = eval(config['TRAIN']['warm_epoch'])
+
+        # 读取metric配置
+        self.metric = metric
         self.ks = eval(config['METRIC']['ks'])
 
+        # 其他配置
+        self.device = config['TRAIN']['device']
         self._to(self.device)
 
-    def step(self, mode='train', **inputs):
-        if mode == 'train':
-            # rate: u-user, v-item; link: u-user, v-trusted user
-            u = inputs['u'].to(self.device)
-            v = inputs['v'].to(self.device)
-            weight = inputs['weight'].to(self.device)
+    def get_graphs(self):
+        train_edges = {
+            meta_etype: range(self.train_size) for meta_etype in self.g.canonical_etypes
+        }
+        train_g = dgl.edge_subgraph(self.g, train_edges, relabel_nodes=False)
+        val_edges = {
+            meta_etype: range(self.train_size, self.train_size + self.val_size) for meta_etype in self.g.canonical_etypes
+        }
+        val_pred_g = dgl.edge_subgraph(self.g, val_edges, relabel_nodes=False)
+        test_edges = {
+            meta_etype: range(self.train_size + self.val_size, self.g.num_edges(meta_etype)) for meta_etype in self.g.canonical_etypes
+        }
+        test_pred_g = dgl.edge_subgraph(self.g, test_edges, relabel_nodes=False)
+        # val_g = dgl.edge_subgraph(self.g, range(self.train_size + self.val_size), relabel_nodes=False)
 
+        return train_g, val_pred_g, test_pred_g
+
+    def construct_negative_graph(self, graph, k, etype):
+        utype, _, vtype = etype
+        src, dst = graph.edges(etype=etype)
+        neg_src = src.repeat_interleave(k)
+        neg_dst = torch.randint(0, graph.num_nodes(vtype), (len(src) * k,), device=neg_src.device)
+        return dgl.heterograph(
+            {etype: (neg_src, neg_dst)},
+            num_nodes_dict={ntype: graph.num_nodes(ntype) for ntype in graph.ntypes})
+
+    def step(self, mode='train', **inputs):
+        # 模型单步计算
+        if mode == 'train':
+            train_pos_g = inputs['train_pos_g']
+            train_neg_g = self.construct_negative_graph(train_pos_g, self.train_neg_num, etype=('user', 'rate', 'item'))
             self.model.train()
             self.optimizer.zero_grad()
-
-            neg_sample = self.get_negative_sample(u, k=self.train_neg_num).t().reshape(-1)
-            pos_pred = self.model(
-                u=u,
-                v=v
+            pos_pred, neg_pred = self.model(
+                train_pos_g,
+                train_neg_g
             )
-            neg_pred = self.model(
-                u=u.repeat(self.train_neg_num),
-                v=neg_sample.to(self.device)
-            ).reshape(self.train_neg_num, -1).t()
-            loss = self.loss_func(pos_pred, weight)
-            neg_loss = self.loss_func(torch.mean(neg_pred, dim=1), torch.zeros_like(weight, device=self.device))
-            loss = loss + neg_loss
+            neg_pred = neg_pred.reshape(-1, self.train_neg_num)
+            loss = self.loss_func(pos_pred, neg_pred)
             loss.backward()
             self.optimizer.step()
             self.lr_scheduler.step()
             return loss.item()
-
         elif mode == 'evaluate':
             with torch.no_grad():
+                message_g = inputs['message_g']
+                pred_g = inputs['pred_g']
+                neg_g = self.construct_negative_graph(pred_g, self.neg_num, etype=('user', 'rate', 'item'))
                 self.model.eval()
-                # rate: u-user, v-item; link: u-user, v-trusted user
-                u = inputs['u'].to(self.device)
-                v = inputs['v'].to(self.device)
-                weight = inputs['weight'].to(self.device)
-                # 一定注意转置和reshape的顺序
-                neg_sample = self.get_negative_sample(u, k=self.neg_num).t().reshape(-1)
-                pos_pred = self.model(
-                    u=u,
-                    v=v
+                pos_pred, neg_pred = self.model.predict(
+                    message_g,
+                    pred_g,
+                    neg_g
                 )
-                # 一定注意转置和reshape的顺序
-                neg_pred = self.model(
-                    u=u.repeat(self.neg_num),
-                    v=neg_sample.to(self.device)
-                ).reshape(self.neg_num, -1).t()
-                loss = self.loss_func(pos_pred, weight)
-                neg_loss = self.loss_func(torch.mean(neg_pred, dim=1), torch.zeros_like(weight, device=self.device))
-                loss = loss + neg_loss
-                pos_pred = pos_pred.cpu().reshape(-1, 1)
-                neg_pred = neg_pred.cpu()
-                self.metric.compute_metrics(pos_pred, neg_pred, task=self.task)
+                neg_pred = neg_pred.reshape(-1, self.neg_num)
+                loss = self.loss_func(pos_pred, neg_pred)
+                self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu(), task=self.task)
                 return loss.item()
         else:
             raise ValueError("Wrong Mode")
 
-    def total_negative_sample(self, k):
-        # 为所有用户进行负样本抽样
-        self.neg_samples = None
-        for u in trange(self.user_num, desc='Neg Sampling', leave=True):
-            # 当前u的互动列表，user和item的idx是从0开始计数的
-            interacted_sample = self.user2history[str(u)]
-            # 如果是link任务，长度为total user num，rate任务是item num
-            if self.task == 'Rate':
-                mask = torch.ones(self.item_num)   # 0, item_num
-            else:
-                mask = torch.ones(self.total_user_num)
-            mask[interacted_sample] = 0
-            # 这是在全局抽100个样本，这里不用加id偏移的原因是模型内部embedding是分开的，分别从0开始计数
-            cur_neg = torch.multinomial(mask, k, replacement=True).unsqueeze(0)
-            if self.neg_samples is None:
-                self.neg_samples = cur_neg
-            else:
-                self.neg_samples = torch.vstack([self.neg_samples, cur_neg])
-
-    def get_negative_sample(self, user: torch.Tensor, k):
-        return self.neg_samples[user, :k]
-        # high = self.neg_samples.shape[1]
-        # # 生成一个跟user同等长度，宽度为k的随机idx矩阵
-        # idx = torch.randint(0, high, (user.shape[0], k))
-        # return self.neg_samples[user].gather(1, idx)
-
     def train(self):
+        # 整体训练流程
         tqdm.write(self._log("=" * 10 + "TRAIN BEGIN" + "=" * 10))
         epoch = eval(self.config['TRAIN']['epoch'])
+        # 从左到右：训练图，用于验证的图，用于测试的图
+        train_g, val_pred_g, test_pred_g = self.get_graphs()
+        train_g = train_g.to(self.device)
+        val_pred_g = val_pred_g.to(self.device)
+        test_pred_g = test_pred_g.to(self.device)
 
         for e in range(1, epoch + 1):
-            all_loss = 0.0
-            self.total_negative_sample(k=self.neg_num)
-            for idx, data in enumerate(tqdm(self.train_loader)):
-                loss = self.step(
-                    mode='train',
-                    u=data[:, 0].long(),
-                    v=data[:, 1].long(),
-                    weight=data[:, 2].float()
-                )
-                all_loss += loss
-            all_loss /= idx
-            metric_str = f'Train Epoch: {e}\nLoss: {all_loss:.4f}\n'
+            """
+            write codes for train
+            and return loss
+            """
+
+            loss = self.step(mode='train', train_pos_g=train_g)
+            metric_str = f'Train Epoch: {e}\nLoss: {loss:.4f}\n'
 
             if e % self.eval_step == 0:
-                self.total_negative_sample(k=self.neg_num)
+                # 在训练图上跑节点表示，在验证图上预测边的概率
                 self.metric.clear_metrics()
-                all_loss = 0.0
-                for idx, data in enumerate(tqdm(self.val_loader)):
-                    loss = self.step(
-                        mode='evaluate',
-                        u=data[:, 0].long(),
-                        v=data[:, 1].long(),
-                        weight=data[:, 2].float(),
-                    )
-                    all_loss += loss
-                all_loss /= idx
+                loss = self.step(mode='evaluate', message_g=train_g, pred_g=val_pred_g)
                 self.metric.get_batch_metrics()
                 metric_str += f'Evaluate Epoch: {e}\n'
-                metric_str += f'loss: {all_loss:.4f}\n'
+                metric_str += f'loss: {loss:.4f}\n'
                 metric_str = self._generate_metric_str(metric_str)
-
             tqdm.write(self._log(metric_str))
+
             # 保存最好模型
             if self.metric.is_save:
                 self._save_model(self.save_pth)
@@ -198,25 +175,18 @@ class MFTrainer(BaseTrainer):
                 break
             else:
                 self.metric.is_early_stop = False
+
         tqdm.write(self._log(self.metric.print_best_metrics()))
 
         # 开始测试
         # 加载最优模型
         self._load_model(self.save_pth)
         self.metric.clear_metrics()
-        all_loss = 0.0
-        for idx, data in enumerate(tqdm(self.test_loader)):
-            loss = self.step(
-                mode='evaluate',
-                u=data[:, 0].long(),
-                v=data[:, 1].long(),
-                weight=data[:, 2].float(),
-            )
-            all_loss += loss
-        all_loss /= idx
+        # 在训练图上跑节点表示，在测试图上预测边的概率
+        loss = self.step(mode='evaluate', message_g=train_g, pred_g=test_pred_g)
         self.metric.get_batch_metrics()
         metric_str = f'Test Epoch: \n'
-        metric_str += f'loss: {all_loss:.4f}\n'
+        metric_str += f'loss: {loss:.4f}\n'
         metric_str = self._generate_metric_str(metric_str)
         tqdm.write(self._log(metric_str))
         tqdm.write("=" * 10 + "TRAIN END" + "=" * 10)
