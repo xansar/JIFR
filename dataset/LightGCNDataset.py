@@ -21,7 +21,7 @@ class RateLightGCN(DGLDataset):
     def __init__(self, config):
         self._g = None
         self.config = config
-        self.user_num = eval(config['MODEL']['pred_user_num'])
+        self.pred_user_num = eval(config['MODEL']['pred_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.model_name = config['MODEL']['model_name']
         self.task = config['TRAIN']['task']
@@ -72,8 +72,8 @@ class RateLightGCN(DGLDataset):
             ('item', 'rated-by', 'user'): (i, u)
         }
         num_nodes = {
-            'user': 19044,
-            'item': 53746
+            'user': self.pred_user_num,
+            'item': self.item_num
         }
         self._g = dgl.heterograph(
             data_dict=graph_data,
@@ -99,6 +99,7 @@ class RateLightGCN(DGLDataset):
     def __getitem__(self, idx):
         assert idx == 0
         return self._g
+
 
 class LinkLightGCN(RateLightGCN):
     def __init__(self, config):
