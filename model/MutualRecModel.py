@@ -17,136 +17,79 @@ import torch
 import torch.nn as nn
 
 
-"""
-Spatial att layer
-"""
-
-class ItemInfluenceEmbedding(nn.Module):
-    def __init__(self, embedding_size=1, num_heads=1):
-        self.embedding_size = embedding_size
-        super(ItemInfluenceEmbedding, self).__init__()
-        self.user2item_gat = dglnn.GATv2Conv(
-            in_feats=embedding_size,
-            out_feats=embedding_size,
-            num_heads=num_heads,
-            activation=torch.nn.functional.leaky_relu,
-            allow_zero_in_degree=True
-        )
-        self.item_influence_gat = dglnn.GATv2Conv(
-            in_feats=embedding_size,
-            out_feats=embedding_size,
-            num_heads=num_heads,
-            activation=torch.nn.functional.leaky_relu,
-            allow_zero_in_degree=True
-        )
-
-    def forward(self, user2item_g, reverse_consumption_neighbour_g, embedding):
-        # 应该只有被采样的item部分向量不为0
-        user2item_embedding = self.user2item_gat(user2item_g, embedding).reshape(-1, self.embedding_size)    # num_nodes * embedding_size
-        # print(user2item_embedding)
-        # 只会使用上面不为0的item，其他的都不会使用，返回的是pred user部分不为0
-        item_influence_embedding = self.item_influence_gat(reverse_consumption_neighbour_g, user2item_embedding).reshape(-1, self.embedding_size)
-        # print(item_influence_embedding)
-        return item_influence_embedding
-
-
-class SocialItemEmbedding(nn.Module):
-    def __init__(self, embedding_size=1, num_heads=1):
-        self.embedding_size = embedding_size
-        super(SocialItemEmbedding, self).__init__()
-        self.item2user_gat = dglnn.GATv2Conv(
-            in_feats=embedding_size,
-            out_feats=embedding_size,
-            num_heads=num_heads,
-            activation=torch.nn.functional.leaky_relu,
-            allow_zero_in_degree=True
-        )
-        self.social_item_gat = dglnn.GATv2Conv(
-            in_feats=embedding_size,
-            out_feats=embedding_size,
-            num_heads=num_heads,
-            activation=torch.nn.functional.leaky_relu,
-            allow_zero_in_degree=True
-        )
-
-    def forward(self, item2user_g, social_neighbour_g, embedding):
-        # 取出采样图用到的embedding
-        social_used_embedding = embedding[item2user_g.ndata['_ID']]
-        # 应该只有被采样的user部分向量不为0
-        item2user_embedding = self.item2user_gat(item2user_g, social_used_embedding).reshape(-1, self.embedding_size)    # num_nodes * embedding_size
-        # 只会使用上面不为0的user，其他的都不会使用，返回的是pred user部分不为0
-
-        # 只包括pred user的嵌入
-        social_embedding = embedding[social_neighbour_g.nodes()]    # 这里只用到采样节点的embedding
-        # 找到进行user-user信息传输的起始user节点id，并在social_embedding中修改为item2user_embedding
-        used_user_id = torch.where(torch.sum(item2user_embedding, dim=1) != 0)[0]
-        social_user_id = item2user_g.ndata['_ID'][used_user_id] # 对应consumption_g的id，也对应social_neighbour_g的id
-        # social_user_id：使用的这几个用户在social图中的id，used_user_id：这几个用户在item2user_g中的id
-        social_embedding[social_user_id] = item2user_embedding[used_user_id]
-        social_item_embedding = self.social_item_gat(social_neighbour_g, social_embedding).reshape(-1, self.embedding_size)
-        return social_item_embedding
-
 class SpatialAttentionLayer(nn.Module):
-    def __init__(self, embedding_size=1, num_heads=1):
+    def __init__(self, rel_names, embedding_size=1, num_heads=1):
         super(SpatialAttentionLayer, self).__init__()
-        self.item_influence_embedding = ItemInfluenceEmbedding(embedding_size, num_heads)
-        self.social_item_embedding = SocialItemEmbedding(embedding_size, num_heads)
+        self.gat_layer_1 = dglnn.HeteroGraphConv(
+            {
+                rel: dglnn.GATv2Conv(embedding_size, embedding_size, num_heads=num_heads)
+                for rel in rel_names
+            },
+            aggregate='mean'
+        )
+        self.gat_layer_2 = dglnn.HeteroGraphConv(
+            {
+                rel: dglnn.GATv2Conv(embedding_size, embedding_size, num_heads=num_heads)
+                for rel in rel_names
+            },
+            aggregate='mean'
+        )
+
         self.output = nn.Sequential(
             nn.Linear(2 * embedding_size, embedding_size),
             nn.BatchNorm1d(embedding_size),
             nn.LeakyReLU()
         )
 
-    def forward(self, user2item_g, reverse_consumption_neighbour_g, item2user_g, social_neighbour_g, embedding):
-        # embedding 是截取过的，pred user 和 item部分的
-        # 这个embedding，最后信息传递到user上，因此只需要把pred user部分的embedding取出来就行
-        item_influence_embedding = \
-            self.item_influence_embedding(user2item_g, reverse_consumption_neighbour_g, embedding)[:social_neighbour_g.num_nodes()]
-        social_item_embedding = self.social_item_embedding(item2user_g, social_neighbour_g, embedding)
-        # 最后返回所有pred user的embedding
-        return self.output(torch.cat([item_influence_embedding, social_item_embedding], dim=1))
+    def forward(self, g, user_embed, item_embed):
+        # print(h)
+        u = {'user': user_embed}
+        i = {'item': item_embed}
+        # user->item
+        rsc = u
+        dst = i
+        h1 = self.gat_layer_1(g, (rsc, dst))
+        h1['item'] = h1['item'].squeeze(2)
 
-"""
-Spectral att layer
-"""
+        # item->user
+        rsc = i
+        dst = u
+        h2 = self.gat_layer_1(g, (rsc, dst))
+        h2['user'] = h2['user'].squeeze(2)
+
+        # item influence embedding: item->user
+        rsc = h1
+        dst = u
+        item_influence_embedding = self.gat_layer_2(g, (rsc, dst))
+        item_influence_embedding['user'] = item_influence_embedding['user'].squeeze(1)
+
+        # social item embedding: user->user
+        rsc = h2
+        dst = u
+        social_item_embedding = self.gat_layer_2(g, (rsc, dst))
+        social_item_embedding['user'] = social_item_embedding['user'].squeeze(1)
+
+
+        # print(item_influence_embedding, social_item_embedding)
+        output = torch.cat([item_influence_embedding['user'], social_item_embedding['user']], dim=1)
+        return self.output(output)
 
 class SpectralAttentionLayer(nn.Module):
     def __init__(self, embedding_size=1, num_heads=1, kernel_nums=3):
-        self.embedding_size = embedding_size
         super(SpectralAttentionLayer, self).__init__()
-        self.spec_gcn = dglnn.ChebConv(
-            embedding_size,
-            embedding_size,
-            kernel_nums,
-            activation=nn.functional.leaky_relu
-        )
-        self.att = dglnn.GATv2Conv(
-            embedding_size,
-            embedding_size,
-            num_heads,
-            allow_zero_in_degree=True,
-            activation=nn.functional.leaky_relu
-        )
-        self.output = nn.Sequential(
-            nn.Linear(embedding_size, embedding_size),
-            nn.BatchNorm1d(embedding_size),
-            nn.LeakyReLU()
-        )
+        self.spec_gcn = dglnn.ChebConv(embedding_size, embedding_size, kernel_nums)
+        self.att = dglnn.GATv2Conv(embedding_size, embedding_size, num_heads, allow_zero_in_degree=True)
 
-    def forward(self, social_neighbour_network, embedding, laplacian_lambda_max):
-        # social network应该从total user中采样，并且是bidirected
+    def forward(self, social_networks, user_embed, laplacian_lambda_max):
         # spectral gcn
         # print(u)
-        h = self.spec_gcn(social_neighbour_network, embedding, laplacian_lambda_max).reshape(-1, self.embedding_size)
-        h = self.spec_gcn(social_neighbour_network, h, laplacian_lambda_max).reshape(-1, self.embedding_size)
+        user_embed = self.spec_gcn(social_networks, user_embed, laplacian_lambda_max)
+        user_embed = self.spec_gcn(social_networks, user_embed, laplacian_lambda_max)
 
         # attention
-        social_preference_embedding = self.att(social_neighbour_network, h).reshape(-1, self.embedding_size)
-        return self.output(social_preference_embedding)
+        user_embed = self.att(social_networks, user_embed)
+        return user_embed.squeeze(1)
 
-"""
-Mutualistic Layer
-"""
 class MutualisicLayer(nn.Module):
     def __init__(self, embedding_size=1):
         super(MutualisicLayer, self).__init__()
@@ -162,14 +105,14 @@ class MutualisicLayer(nn.Module):
             nn.LeakyReLU()
         )
 
-    def forward(self, user_embed, consumption_pref, social_pref):
+    def forward(self, raw_embed, consumption_pref, social_pref):
         # print(raw_embed)
         # print(consumption_pref)
         # print(social_pref)
-        h_uP = self.consumption_mlp(torch.hstack([consumption_pref, user_embed]))
-        h_uS = self.social_mlp(torch.hstack([social_pref, user_embed]))
+        h_uP = self.consumption_mlp(torch.hstack([consumption_pref, raw_embed]))
+        h_uS = self.social_mlp(torch.hstack([social_pref, raw_embed]))
 
-        h_m = h_uP * h_uS
+        h_m = h_uP * h_uS + h_uP + h_uS
 
         atten_P = torch.softmax(h_uP, dim=1)
         h_mP = h_m * atten_P
@@ -181,7 +124,6 @@ class MutualisicLayer(nn.Module):
         h_mP = torch.hstack([h_mP, h_uP])
         h_mS = torch.hstack([h_mS, h_uS])
         return h_mP, h_mS
-
 
 class PredictionLayer(nn.Module):
     def __init__(self, embedding_size=1):
@@ -198,97 +140,124 @@ class PredictionLayer(nn.Module):
         )
 
 
-    def forward(self, h_miu_mP, h_miu_mS):
+    def forward(self, **inputs):
+        h_miu_mP = inputs['h_miu_mP']
+        h_miu_mS = inputs['h_miu_mS']
+
         h_new_P = self.mutual_pref_mlp(h_miu_mP)
         h_new_S = self.mutual_social_mlp(h_miu_mS)
 
         return h_new_P, h_new_S
 
-class DotProductPredictor(nn.Module):
-    def forward(self, graph, new_ft, raw_ft):
-        # new_ft, raw_ft的大小都是包含了user和item的总图的节点数*embeddingsize
-        ## new_ft中，pred user部分被修改
+class HeteroDotProductPredictor(nn.Module):
+    def forward(self, graph, h, etype):
+        # h contains the node representations for each node type computed from
+        # the GNN defined in the previous section (Section 5.1).
         with graph.local_scope():
-            graph.ndata['nft'] = new_ft
-            graph.ndata['rft'] = raw_ft
-            graph.apply_edges(fn.u_dot_v('nft', 'rft', 'score'))
-            return graph.edata['score']
+            if etype == 'rate':
+                graph.ndata['h'] = h
+                graph.apply_edges(fn.u_dot_v('h', 'h', 'score'), etype=etype)
+                return graph.edges[etype].data['score']
+            else:
+                n_f_u = h['user']
+                i_f = h['item']
+                r_f_u = h['raw_user']
+                graph.ndata['n_f'] = {'user': n_f_u, 'item': i_f}
+                graph.ndata['r_f'] = {'user': r_f_u, 'item': i_f}
+                graph.apply_edges(fn.u_dot_v('n_f', 'r_f', 'score'), etype=etype)
+                return graph.edges[etype].data['score']
 
 class MutualRecModel(nn.Module):
-    def __init__(self, config=None):
+    def __init__(self, config, rel_names):
         super(MutualRecModel, self).__init__()
-        # self.embedding_size = eval(config['MODEL']['embedding_size'])
-        # self.num_heads = eval(config['MODEL']['num_heads'])
-        # self.num_kernels = eval(config['MODEL']['num_kernels'])
-        self.pred_user_num = eval(config['MODEL']['pred_user_num'])
-        self.total_user_num = eval(config['MODEL']['total_user_num'])
-        self.item_num = eval(config['MODEL']['item_num'])
-        self.embedding_size = eval(config['MODEL']['embedding_size'])
-        self.num_heads = eval(config['MODEL']['num_heads'])
-        self.num_kernels = eval(config['MODEL']['num_kernels'])
-        self.nodes_num = self.total_user_num + self.item_num
-        self.embedding = nn.Embedding(self.nodes_num, self.embedding_size)
-        self.embedding_BN = nn.BatchNorm1d(self.embedding_size)
+        embedding_size = eval(config['MODEL']['embedding_size'])
+        num_heads = eval(config['MODEL']['num_heads'])
+        num_kernels = eval(config['MODEL']['num_kernels'])
+        num_nodes = {
+            'user': eval(config['MODEL']['total_user_num']),
+            'item': eval(config['MODEL']['item_num'])
+        }
+        self.embedding = dglnn.HeteroEmbedding(num_nodes, embedding_size)
+        self.embedding_user_BN = nn.BatchNorm1d(embedding_size)
+        self.embedding_item_BN = nn.BatchNorm1d(embedding_size)
 
-        self.spatial_atten_layer = SpatialAttentionLayer(self.embedding_size, self.num_heads)
+        self.spatial_atten_layer = SpatialAttentionLayer(rel_names, embedding_size, num_heads)
 
-        self.spectral_atten_layer = SpectralAttentionLayer(self.embedding_size, self.num_heads, self.num_kernels)
+        self.spectral_atten_layer = SpectralAttentionLayer(embedding_size, num_heads, num_kernels)
 
-        self.mutualistic_layer = MutualisicLayer(self.embedding_size)
-        self.prediction_layer = PredictionLayer(self.embedding_size)
+        self.mutualistic_layer = MutualisicLayer(embedding_size)
+        self.prediction_layer = PredictionLayer(embedding_size)
 
-        self.raw_embed_mlp = nn.Sequential(
-            nn.Linear(self.embedding_size, self.embedding_size),
-            nn.BatchNorm1d(self.embedding_size),
-            nn.LeakyReLU()
-        )
-        self.predictor = DotProductPredictor()
+        self.pred = HeteroDotProductPredictor()
 
-    def forward(self, graphs: dict, laplacian_lambda_max):
-        g = graphs['g']
-        embedding = self.embedding_BN(self.embedding(g.nodes())) # 总embedding
-        pred_user_embedding = embedding[:self.pred_user_num, :]
-        total_user_embedding = embedding[:self.total_user_num, :]
-        item_embedding = embedding[-self.item_num:, :]
-        # Spatial layer
-        user2item_g = graphs['user2item_g']
-        reverse_consumption_neighbour_g = graphs['reverse_consumption_neighbour_g']
-        item2user_g = graphs['item2user_g']
-        social_neighbour_g = graphs['social_neighbour_g']
-        # 这一层只用pred user部分embedding和item embedding
-        user_item_embedding = torch.cat([pred_user_embedding, item_embedding], dim=0)
-        user_item_embed = self.spatial_atten_layer(
-            user2item_g,
-            reverse_consumption_neighbour_g,
-            item2user_g,
-            social_neighbour_g,
-            user_item_embedding
-        )
+    def forward(self, train_pos_g, train_neg_rate_g, train_neg_link_g, social_network, laplacian_lambda_max):
+        idx = {ntype: train_pos_g.nodes(ntype) for ntype in train_pos_g.ntypes}
+        user_item_embed = self.embedding(idx)
+        # item_embed = self.embedding({'item': g.nodes('item')})
+        # print(user_item_embed)
+        user_embed = self.embedding_user_BN(user_item_embed['user'])
+        item_embed = self.embedding_item_BN(user_item_embed['item'])
 
-        # Spectral layer
-        social_neighbour_network = graphs['social_neighbour_network']
-        # 这一层用total user的embedding
-        user_social_embed = self.spectral_atten_layer(
-            social_neighbour_network,
-            total_user_embedding,
-            laplacian_lambda_max
-        )
+        # 经过一次梯度回传之后，这个特征就呈现出来不同维度的差异，而且每个用户在不同维度上的表现是类似的
+        user_item_embed = self.spatial_atten_layer(train_pos_g, user_embed, item_embed)
+        user_social_embed = self.spectral_atten_layer(social_network, user_embed, laplacian_lambda_max)
 
-        # mutualistic layer
-        user_social_embed = user_social_embed[:self.pred_user_num, :]
-        h_miu_mP, h_miu_mS = self.mutualistic_layer(pred_user_embedding, user_item_embed, user_social_embed)
+        h_miu_mP, h_miu_mS = self.mutualistic_layer(user_embed, user_item_embed, user_social_embed)
 
         h_new_P, h_new_S = self.prediction_layer(
             h_miu_mP = h_miu_mP,
             h_miu_mS = h_miu_mS,
         )
-        return h_new_P, h_new_S
+        res_P_embed = {
+            'user': h_new_P,
+            'item': item_embed
+        }
+        pos_rate_score = self.pred(train_pos_g, res_P_embed, 'rate')
+        neg_rate_score = self.pred(train_neg_rate_g, res_P_embed, 'rate')
 
-    def predict(self, g, new_ft_pred_user):
-        raw_ft = self.raw_embed_mlp(self.embedding_BN(self.embedding(g.nodes())))
-        new_ft = torch.clone(raw_ft)
-        new_ft[:self.pred_user_num, :] = new_ft_pred_user
-        return self.predictor(g, new_ft, raw_ft)
+        res_S_embed = {
+            'user': h_new_S,
+            'item': item_embed,
+            'raw_user': user_embed
+        }
+        pos_link_score = self.pred(train_pos_g, res_S_embed, 'trust')
+        neg_link_score = self.pred(train_neg_link_g, res_S_embed, 'trust')
+        return pos_rate_score, neg_rate_score, pos_link_score, neg_link_score
+
+    def predict(self, message_g, pos_pred_g, neg_pred_rate_g, neg_pred_link_g, social_network, laplacian_lambda_max):
+        idx = {ntype: message_g.nodes(ntype) for ntype in message_g.ntypes}
+        user_item_embed = self.embedding(idx)
+        # item_embed = self.embedding({'item': g.nodes('item')})
+        # print(user_item_embed)
+        user_embed = self.embedding_user_BN(user_item_embed['user'])
+        item_embed = self.embedding_item_BN(user_item_embed['item'])
+
+        # 经过一次梯度回传之后，这个特征就呈现出来不同维度的差异，而且每个用户在不同维度上的表现是类似的
+        user_item_embed = self.spatial_atten_layer(message_g, user_embed, item_embed)
+        user_social_embed = self.spectral_atten_layer(social_network, user_embed, laplacian_lambda_max)
+
+        h_miu_mP, h_miu_mS = self.mutualistic_layer(user_embed, user_item_embed, user_social_embed)
+
+        h_new_P, h_new_S = self.prediction_layer(
+            h_miu_mP=h_miu_mP,
+            h_miu_mS=h_miu_mS,
+        )
+        res_P_embed = {
+            'user': h_new_P,
+            'item': item_embed
+        }
+        pos_rate_score = self.pred(pos_pred_g, res_P_embed, 'rate')
+        neg_rate_score = self.pred(neg_pred_rate_g, res_P_embed, 'rate')
+
+        res_S_embed = {
+            'user': h_new_S,
+            'item': item_embed,
+            'raw_user': user_embed
+        }
+        pos_link_score = self.pred(pos_pred_g, res_S_embed, 'trust')
+        neg_link_score = self.pred(neg_pred_link_g, res_S_embed, 'trust')
+        return pos_rate_score, neg_rate_score, pos_link_score, neg_link_score
+
 
 if __name__ == '__main__':
     pred_user = [0, 1, 2, 3]

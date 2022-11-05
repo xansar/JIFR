@@ -25,7 +25,7 @@ from trainer import *
 from configparser import ConfigParser
 
 CommonModel = ['MF']
-GCNModel = ['LightGCN', 'TrustSVD']
+GCNModel = ['LightGCN', 'TrustSVD', 'MutualRec']
 
 class MyConfigParser(ConfigParser):
     def __init__(self, defaults=None):
@@ -51,7 +51,7 @@ def setup_seed(seed):
 def parse_args():
     # Parses the arguments.
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('--config_pth', type=str, default='TrustSVD.ini',
+    parser.add_argument('--config_pth', type=str, default='MutualRec.ini',
                         help='Choose config')
     return parser.parse_args()
 
