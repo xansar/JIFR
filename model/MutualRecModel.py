@@ -112,7 +112,7 @@ class MutualisicLayer(nn.Module):
         h_uP = self.consumption_mlp(torch.hstack([consumption_pref, raw_embed]))
         h_uS = self.social_mlp(torch.hstack([social_pref, raw_embed]))
 
-        h_m = h_uP * h_uS + h_uP + h_uS
+        h_m = h_uP * h_uS
 
         atten_P = torch.softmax(h_uP, dim=1)
         h_mP = h_m * atten_P
@@ -198,7 +198,6 @@ class MutualRecModel(nn.Module):
         user_embed = self.embedding_user_BN(user_item_embed['user'])
         item_embed = self.embedding_item_BN(user_item_embed['item'])
 
-        # 经过一次梯度回传之后，这个特征就呈现出来不同维度的差异，而且每个用户在不同维度上的表现是类似的
         user_item_embed = self.spatial_atten_layer(train_pos_g, user_embed, item_embed)
         user_social_embed = self.spectral_atten_layer(social_network, user_embed, laplacian_lambda_max)
 
@@ -232,7 +231,6 @@ class MutualRecModel(nn.Module):
         user_embed = self.embedding_user_BN(user_item_embed['user'])
         item_embed = self.embedding_item_BN(user_item_embed['item'])
 
-        # 经过一次梯度回传之后，这个特征就呈现出来不同维度的差异，而且每个用户在不同维度上的表现是类似的
         user_item_embed = self.spatial_atten_layer(message_g, user_embed, item_embed)
         user_social_embed = self.spectral_atten_layer(social_network, user_embed, laplacian_lambda_max)
 
