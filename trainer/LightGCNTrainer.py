@@ -1,13 +1,15 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 """
-@File    :   LightGCNTrainer.py    
+@File    :   LightGCNTrainer.py
 @Contact :   xansar@ruc.edu.cn
 
 @Modify Time      @Author    @Version    @Desciption
 ------------      -------    --------    -----------
-2022/10/26 13:15   zxx      1.0         None
+2022/11/4 21:19   zxx      1.0         None
 """
+
+# import lib
 
 import dgl
 import torch
@@ -57,6 +59,7 @@ class LightGCNTrainer(BaseTrainer):
         self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.neg_num = eval(config['DATA']['neg_num'])
+        self.train_neg_num = eval(config['DATA']['train_neg_num'])
         self.model = model
         self.loss_func = loss_func
         self.optimizer = optimizer
@@ -73,58 +76,43 @@ class LightGCNTrainer(BaseTrainer):
         self._to(self.device)
 
     def get_graphs(self):
-        train_g = dgl.edge_subgraph(self.g, range(self.train_size), relabel_nodes=False)
-        val_pred_g = dgl.edge_subgraph(self.g, range(self.train_size, self.train_size + self.val_size), relabel_nodes=False)
-        val_g = dgl.edge_subgraph(self.g, range(self.train_size + self.val_size), relabel_nodes=False)
-        test_pred_g = dgl.edge_subgraph(self.g, range(self.train_size + self.val_size, self.g.num_edges()), relabel_nodes=False)
-        return train_g, val_pred_g, val_g, test_pred_g
+        train_edges = {
+            meta_etype: range(self.train_size) for meta_etype in self.g.canonical_etypes
+        }
+        train_g = dgl.edge_subgraph(self.g, train_edges, relabel_nodes=False)
+        val_edges = {
+            meta_etype: range(self.train_size, self.train_size + self.val_size) for meta_etype in self.g.canonical_etypes
+        }
+        val_pred_g = dgl.edge_subgraph(self.g, val_edges, relabel_nodes=False)
+        test_edges = {
+            meta_etype: range(self.train_size + self.val_size, self.g.num_edges(meta_etype)) for meta_etype in self.g.canonical_etypes
+        }
+        test_pred_g = dgl.edge_subgraph(self.g, test_edges, relabel_nodes=False)
+        # val_g = dgl.edge_subgraph(self.g, range(self.train_size + self.val_size), relabel_nodes=False)
 
-    def get_neg_graph(self, graph, u, k=100, mode='train'):
-        """
-        为用户序列中的每个用户进行负采样，构建负采样图
-        :param mode: train：每个用户下的正样本对应的负样本不同，evaluate：每个用户下的正样本对应的负样本相同
-        :type mode: str
-        :param graph: 整图，一般是包含所有训练、测试样本的图
-        :type graph: dgl.graph
-        :param u: 待采样的用户id序列
-        :type u: tensor
-        :param k: 训练时为用户初次采样负样本的数量，之后正样本再从中抽取一个作为负样本
-        :type k: int
-        :return: 负采样图
-        :rtype: dgl.graph
-        """
-        user_num = self.user_num
-        # 因为是二分图，只有（userid, itemid)这一部分是有交互的，user之间、item之间没有交互
-        # 抽取的结果是user * k，即为每个用户抽一个k长度的负样本
-        ## 这里一定注意，因为截取了user-item互动部分的矩阵，此时取出的idx下标是不对的，需要偏移user_num位
-        if self.task == 'Rate':
-            neg_sample_selected = torch.multinomial((1 - graph.adj().to_dense())[:user_num, user_num:], k, replacement=True) + user_num
-            num_nodes = self.user_num + self.item_num
-        else:
-            neg_sample_selected = torch.multinomial((1 - graph.adj().to_dense())[:user_num, :], k, replacement=True)
-            num_nodes = self.total_user_num
-        # 测试时用户拥有的正样本对应同一组负样本
-        if mode == 'evaluate':
-            v = neg_sample_selected[u].t().reshape(-1).to(self.device)
-            u = u.repeat(k)
-        else:
-            # 为每个正样本从这k个中抽取一个负样本
-            neg_sample_idx = torch.randint(0, k, (1, u.shape[0])).reshape(-1)
-            v = neg_sample_selected[u, neg_sample_idx].to(self.device)
+        return train_g, val_pred_g, test_pred_g
 
-        return dgl.graph((u, v), num_nodes=num_nodes)
+    def construct_negative_graph(self, graph, k, etype):
+        utype, _, vtype = etype
+        src, dst = graph.edges(etype=etype)
+        neg_src = src.repeat_interleave(k)
+        neg_dst = torch.randint(0, graph.num_nodes(vtype), (len(src) * k,), device=neg_src.device)
+        return dgl.heterograph(
+            {etype: (neg_src, neg_dst)},
+            num_nodes_dict={ntype: graph.num_nodes(ntype) for ntype in graph.ntypes})
 
     def step(self, mode='train', **inputs):
         # 模型单步计算
         if mode == 'train':
             train_pos_g = inputs['train_pos_g']
-            train_neg_g = self.get_neg_graph(self.g, train_pos_g.edges()[0], self.neg_num, mode=mode)
+            train_neg_g = self.construct_negative_graph(train_pos_g, self.train_neg_num, etype=('user', 'rate', 'item'))
             self.model.train()
             self.optimizer.zero_grad()
             pos_pred, neg_pred = self.model(
                 train_pos_g,
                 train_neg_g
             )
+            neg_pred = neg_pred.reshape(-1, self.train_neg_num)
             loss = self.loss_func(pos_pred, neg_pred)
             loss.backward()
             self.optimizer.step()
@@ -134,15 +122,15 @@ class LightGCNTrainer(BaseTrainer):
             with torch.no_grad():
                 message_g = inputs['message_g']
                 pred_g = inputs['pred_g']
+                neg_g = self.construct_negative_graph(pred_g, self.neg_num, etype=('user', 'rate', 'item'))
                 self.model.eval()
-                # 先预测正样本，返回pred_g.num_edges() * 1
-                embedding = self.model.get_embedding(message_g)
-                pos_pred = self.model.predictor(pred_g, embedding)
-                # 抽取self.neg_num个负样本进行预测
-                neg_g = self.get_neg_graph(self.g, pred_g.edges()[0], self.neg_num, mode=mode)
-                # 注意转置的位置，一定先reshape再转置，否则neg与pos无法对应
-                neg_pred = self.model.predictor(neg_g, embedding).reshape(self.neg_num, -1).t()
-                loss = self.loss_func(pos_pred.reshape(-1), torch.mean(neg_pred, dim=1))
+                pos_pred, neg_pred = self.model.predict(
+                    message_g,
+                    pred_g,
+                    neg_g
+                )
+                neg_pred = neg_pred.reshape(-1, self.neg_num)
+                loss = self.loss_func(pos_pred, neg_pred)
                 self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu(), task=self.task)
                 return loss.item()
         else:
@@ -152,11 +140,10 @@ class LightGCNTrainer(BaseTrainer):
         # 整体训练流程
         tqdm.write(self._log("=" * 10 + "TRAIN BEGIN" + "=" * 10))
         epoch = eval(self.config['TRAIN']['epoch'])
-        # 从左到右：训练图，用于验证的图，训练图+验证图，用于测试的图
-        train_g, val_pred_g, val_g, test_pred_g = self.get_graphs()
+        # 从左到右：训练图，用于验证的图，用于测试的图
+        train_g, val_pred_g, test_pred_g = self.get_graphs()
         train_g = train_g.to(self.device)
         val_pred_g = val_pred_g.to(self.device)
-        # val_g = val_g.to(self.device)
         test_pred_g = test_pred_g.to(self.device)
 
         for e in range(1, epoch + 1):
@@ -203,4 +190,3 @@ class LightGCNTrainer(BaseTrainer):
         metric_str = self._generate_metric_str(metric_str)
         tqdm.write(self._log(metric_str))
         tqdm.write("=" * 10 + "TRAIN END" + "=" * 10)
-

@@ -10,7 +10,8 @@
 """
 
 # import lib
-from .ExtendedEpinionsMF import *
-from .ExtendedEpinionsLightGCN import *
 from .ExtendedEpinionsMutualRec import *
-from .ExtendedEpinionsTrustSVD import *
+
+from .MFDataset import *
+from .LightGCNDataset import *
+from .TrustSVDDataset import *

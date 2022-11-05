@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 """
-@File    :   ExtendedEpinionsLightGCN.py    
+@File    :   MFDataset.py
 @Contact :   xansar@ruc.edu.cn
 
 @Modify Time      @Author    @Version    @Desciption
@@ -17,11 +17,11 @@ import pandas as pd
 import os
 import numpy as np
 
-class ExtendedEpinionsRateLightGCN(DGLDataset):
+class RateMF(DGLDataset):
     def __init__(self, config):
         self._g = None
         self.config = config
-        self.user_num = eval(config['MODEL']['pred_user_num'])
+        self.pred_user_num = eval(config['MODEL']['pred_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.model_name = config['MODEL']['model_name']
         self.task = config['TRAIN']['task']
@@ -36,7 +36,7 @@ class ExtendedEpinionsRateLightGCN(DGLDataset):
             self.load()
             print('=' * 20 + 'load graph finished' + '=' * 20)
 
-        super(ExtendedEpinionsRateLightGCN, self).__init__(name=self.data_name)
+        super(RateMF, self).__init__(name=self.data_name)
 
     def save(self):
         if not os.path.isdir(self.dir_pth):
@@ -67,12 +67,18 @@ class ExtendedEpinionsRateLightGCN(DGLDataset):
         print('=' * 20 + 'read rate data finished' + '=' * 20)
         self.train_size = len(record['train'])
         self.val_size = len(record['val'])
-        # 构建全图
-        ## item的idx需要带一个偏置，使得item物品的序号从user之后开始计数
-        i += self.user_num
-        ## 节点数量为两类节点数量之和
-        num_nodes = self.user_num + self.item_num
-        self._g = dgl.graph((u, i), num_nodes=num_nodes)
+        graph_data = {
+            ('user', 'rate', 'item'): (u, i),
+            ('item', 'rated-by', 'user'): (i, u)
+        }
+        num_nodes = {
+            'user': self.pred_user_num,
+            'item': self.item_num
+        }
+        self._g = dgl.heterograph(
+            data_dict=graph_data,
+            num_nodes_dict=num_nodes
+        )
         print('=' * 20 + 'construct graph finished' + '=' * 20)
 
         # 保存
@@ -94,11 +100,11 @@ class ExtendedEpinionsRateLightGCN(DGLDataset):
         assert idx == 0
         return self._g
 
-class ExtendedEpinionsLinkLightGCN(ExtendedEpinionsRateLightGCN):
+class LinkMF(RateMF):
     def __init__(self, config):
         # 这里还包含了没有发出trust关系的用户id
         self.total_user_num = eval(config['MODEL']['total_user_num'])
-        super(ExtendedEpinionsLinkLightGCN, self).__init__(config)
+        super(LinkMF, self).__init__(config)
     def process(self):
         record = {}
         u = np.empty(0)
@@ -124,7 +130,7 @@ class ExtendedEpinionsLinkLightGCN(ExtendedEpinionsRateLightGCN):
 
 
 if __name__ == '__main__':
-    dataset = ExtendedEpinionsRateLightGCN()
+    dataset = RateMF()
     g = dataset[0]
     train_size = dataset.train_size
     train_g = dgl.edge_subgraph(g, range(train_size))

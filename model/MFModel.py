@@ -1,61 +1,55 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 """
-@File    :   ExtendedEpinionsMF.py
+@File    :   MFModel.py
 @Contact :   xansar@ruc.edu.cn
 
 @Modify Time      @Author    @Version    @Desciption
 ------------      -------    --------    -----------
-2022/10/24 21:00   zxx      1.0         None
+2022/11/4 19:19   zxx      1.0         None
 """
 
-import torch
 # import lib
+import torch
 import torch.nn as nn
+import dgl.nn.pytorch as dglnn
+import dgl.function as fn
+
+
+class HeteroDotProductPredictor(nn.Module):
+    def forward(self, graph, h, etype):
+        # h contains the node representations for each node type computed from
+        # the GNN defined in the previous section (Section 5.1).
+        with graph.local_scope():
+            graph.ndata['h'] = h
+            graph.apply_edges(fn.u_dot_v('h', 'h', 'score'), etype=etype)
+            return graph.edges[etype].data['score']
+
 
 class MFModel(nn.Module):
     def __init__(self, config):
         super(MFModel, self).__init__()
         self.config = config
+        self.embedding_size = eval(config['MODEL']['embedding_size'])
         self.task = config['TRAIN']['task']
-        self.user_num = eval(config['MODEL']['pred_user_num'])
+        self.pred_user_num = eval(config['MODEL']['pred_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.total_user_num = eval(config['MODEL']['total_user_num'])
-        self.embedding_size = eval(config['MODEL']['embedding_size'])
+        self.embedding = dglnn.HeteroEmbedding(
+            {'user': self.pred_user_num, 'item': self.item_num}, self.embedding_size
+        )
+        self.pred = HeteroDotProductPredictor()
 
-        if self.task == 'Rate':
-            self.nodes_num = self.user_num + self.item_num
-        elif self.task == 'Link':
-            self.nodes_num = self.total_user_num
-        self.embedding = nn.Embedding(self.nodes_num, self.embedding_size)
-    #     self.weight_init()
-    #
-    # def weight_init(self):
-    #     nn.init.xavier_normal_(self.embedding.data)
+    def forward(self, positive_graph, negative_graph):
+        idx = {ntype: positive_graph.nodes(ntype) for ntype in positive_graph.ntypes}
+        res_embedding = self.embedding(idx)
+        pos_score = self.pred(positive_graph, res_embedding, 'rate')
+        neg_score = self.pred(negative_graph, res_embedding, 'rate')
+        return pos_score, neg_score
 
-    def forward(self, **inputs):
-        u = inputs['u']
-        # 因为user和item的embedding放在一起，所以item部分的id需要加上user_num
-        if self.task == 'Rate':
-            v = inputs['v'] + self.user_num
-        else:
-            v = inputs['v']
-        u = self.embedding(u)
-        v = self.embedding(v)
-        pred = torch.sum(u * v, dim=1)
-        return pred
-
-if __name__ == '__main__':
-    user = torch.tensor([0, 0, 1, 2])
-    item = torch.tensor([0, 1, 1, 0])
-    rate = torch.tensor([3, 2, 4, 5], dtype=torch.float)
-    model = MFModel(3, 2, 4)
-    loss_func = nn.MSELoss()
-    optimizer = torch.optim.AdamW(lr=1e-1, params=model.parameters(), weight_decay=1e-4)
-    for i in range(100):
-        optimizer.zero_grad()
-        pred = model(user=user, item=item)
-        loss = loss_func(pred, rate)
-        print(f'{i}: {loss.item()}')
-        loss.backward()
-        optimizer.step()
+    def predict(self, messege_g, pos_pred_g, neg_pred_g):
+        idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
+        res_embedding = self.embedding(idx)
+        pos_score = self.pred(pos_pred_g, res_embedding, 'rate')
+        neg_score = self.pred(neg_pred_g, res_embedding, 'rate')
+        return pos_score, neg_score
