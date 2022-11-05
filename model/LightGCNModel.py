@@ -6,105 +6,79 @@
 
 @Modify Time      @Author    @Version    @Desciption
 ------------      -------    --------    -----------
-2022/10/25 18:43   zxx      1.0         None
+2022/11/4 19:19   zxx      1.0         None
 """
 
 # import lib
-import torch.nn as nn
 import torch
-import dgl
+import torch.nn as nn
+import dgl.nn.pytorch as dglnn
 import dgl.function as fn
 
-class DotProductPredictor(nn.Module):
-    def forward(self, graph, h):
-        # h是从5.1节的GNN模型中计算出的节点表示
+
+class HeteroDotProductPredictor(nn.Module):
+    def forward(self, graph, h, etype):
+        # h contains the node representations for each node type computed from
+        # the GNN defined in the previous section (Section 5.1).
         with graph.local_scope():
-            # rate: [user, item], link: total_user
             graph.ndata['h'] = h
-            graph.apply_edges(fn.u_dot_v('h', 'h', 'score'))
-            return graph.edata['score']
-
-class GCNLayer(nn.Module):
-    def __init__(self):
-        super(GCNLayer, self).__init__()
-    def forward(self, graph: dgl.DGLHeteroGraph, node_f):
-        with graph.local_scope():
-            # D^-1/2
-            degs = graph.out_degrees().to(node_f.device).float().clamp(min=1)
-            norm = torch.pow(degs, -0.5).view(-1, 1)
-
-            node_f = node_f * norm
-
-            graph.ndata['n_f'] = node_f
-            graph.update_all(message_func=fn.copy_src(src='n_f', out='m'), reduce_func=fn.sum(msg='m', out='n_f'))
-
-            rst = graph.ndata['n_f']
-
-            degs = graph.in_degrees().to(node_f.device).float().clamp(min=1)
-            norm = torch.pow(degs, -0.5).view(-1, 1)
-            rst = rst * norm
-
-            return rst
+            graph.apply_edges(fn.u_dot_v('h', 'h', 'score'), etype=etype)
+            return graph.edges[etype].data['score']
 
 
-# 参考：https://github.com/xhcgit/LightGCN-implicit-DGL/blob/master/LightGCN.py
 class LightGCNModel(nn.Module):
-    def __init__(self, config=None):
+    def __init__(self, config, rel_names):
         super(LightGCNModel, self).__init__()
         self.config = config
         self.embedding_size = eval(config['MODEL']['embedding_size'])
         self.layer_num = eval(config['MODEL']['layer_num'])
         self.task = config['TRAIN']['task']
-        self.user_num = eval(config['MODEL']['pred_user_num'])
+        self.pred_user_num = eval(config['MODEL']['pred_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.total_user_num = eval(config['MODEL']['total_user_num'])
-
-        if self.task == 'Rate':
-            self.nodes_num = self.user_num + self.item_num
-        elif self.task == 'Link':
-            self.nodes_num = self.total_user_num
-        self.embedding = nn.Parameter(torch.randn(self.nodes_num, self.embedding_size))
-
+        self.embedding = dglnn.HeteroEmbedding(
+            {'user': self.pred_user_num, 'item': self.item_num}, self.embedding_size
+        )
         self.layers = nn.ModuleList()
         for i in range(self.layer_num):
-            self.layers.append(GCNLayer())
+            self.layers.append(
+                 dglnn.HeteroGraphConv({
+                    rel: dglnn.GraphConv(self.embedding_size, self.embedding_size, norm='both', weight=False, bias=False)
+                    for rel in rel_names
+                })
+            )
+        self.pred = HeteroDotProductPredictor()
 
-        self.predictor = DotProductPredictor()
-
-    def forward(self, pos_graph, neg_graph):
-        embedding = self.get_embedding(pos_graph)
-        pos_pred = self.predictor(pos_graph, embedding)
-        neg_pred = self.predictor(neg_graph, embedding)
-
-        return pos_pred.reshape(-1), neg_pred.reshape(-1)
-
-    def get_embedding(self, graph):
-        res_embedding = self.embedding
-
+    def forward(self, positive_graph, negative_graph):
+        idx = {ntype: positive_graph.nodes(ntype) for ntype in positive_graph.ntypes}
+        res_embedding = self.embedding(idx)
         for i, layer in enumerate(self.layers):
             if i == 0:
-                embeddings = layer(graph, res_embedding)
+                embeddings = layer(positive_graph, res_embedding)
             else:
-                embeddings = layer(graph, embeddings)
-            res_embedding = res_embedding + embeddings * (1 / (i + 2))
+                embeddings = layer(positive_graph, embeddings)
+            # print(embeddings)
+            # print(res_embedding['user'].shape, embeddings['user'].shape)
+            # print(res_embedding['item'].shape, embeddings['item'].shape)
+            res_embedding['user'] = res_embedding['user'] + embeddings['user'] * (1 / (i + 2))
+            res_embedding['item'] = res_embedding['item'] + embeddings['item'] * (1 / (i + 2))
+        pos_score = self.pred(positive_graph, res_embedding, 'rate')
+        neg_score = self.pred(negative_graph, res_embedding, 'rate')
+        return pos_score, neg_score
 
-        # user_embedding = res_user_embedding  # / (len(self.layers)+1)
-        # item_embedding = res_item_embedding  # / (len(self.layers)+1)
-        return res_embedding
-
-if __name__ == '__main__':
-    user = torch.tensor([0, 0, 1, 2])
-    item = torch.tensor([3, 4, 4, 3])
-    rate = torch.tensor([3, 2, 4, 5], dtype=torch.float)
-    graph = dgl.graph((user, item))
-    model = LightGCNModel()
-    loss_func = nn.MSELoss()
-    optimizer = torch.optim.AdamW(lr=1e-1, params=model.parameters(), weight_decay=1e-4)
-    for i in range(1000):
-        optimizer.zero_grad()
-        e = model.get_embedding(graph)
-        pred = model.predictor(graph, e)
-        loss = loss_func(pred.reshape(-1), rate)
-        print(f'{i}: {loss.item()}')
-        loss.backward()
-        optimizer.step()
+    def predict(self, messege_g, pos_pred_g, neg_pred_g):
+        idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
+        res_embedding = self.embedding(idx)
+        for i, layer in enumerate(self.layers):
+            if i == 0:
+                embeddings = layer(messege_g, res_embedding)
+            else:
+                embeddings = layer(messege_g, embeddings)
+            # print(embeddings)
+            # print(res_embedding['user'].shape, embeddings['user'].shape)
+            # print(res_embedding['item'].shape, embeddings['item'].shape)
+            res_embedding['user'] = res_embedding['user'] + embeddings['user'] * (1 / (i + 2))
+            res_embedding['item'] = res_embedding['item'] + embeddings['item'] * (1 / (i + 2))
+        pos_score = self.pred(pos_pred_g, res_embedding, 'rate')
+        neg_score = self.pred(neg_pred_g, res_embedding, 'rate')
+        return pos_score, neg_score

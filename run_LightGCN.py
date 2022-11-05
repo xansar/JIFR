@@ -49,7 +49,7 @@ def setup_seed(seed):
 def parse_args():
     # Parses the arguments.
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('--config_pth', type=str, default='LightGCN.ini',
+    parser.add_argument('--config_pth', type=str, default='EpinionsLightGCN.ini',
                         help='Choose config')
     return parser.parse_args()
 
@@ -62,11 +62,11 @@ def run(config_pth):
     model_name = config['MODEL']['model_name']
     task = config['TRAIN']['task']
 
-    dataset_name = data_name + task + model_name
+    dataset_name = task + model_name
 
     dataset = eval(dataset_name)(config)
-
-    model = eval(model_name + 'Model')(config)
+    etype = dataset[0].etypes
+    model = eval(model_name + 'Model')(config, etype)
     # model.apply(weight_init)
 
     # optimizer
