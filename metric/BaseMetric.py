@@ -59,9 +59,11 @@ class BaseMetric:
                     self.metric_dict[t][m][k]['cnt'] = -1
                     if self.metric_dict[t][m][k]['value'] > self.metric_dict[t][m][k]['best']:
                         self.metric_dict[t][m][k]['best'] = self.metric_dict[t][m][k]['value']
-                        if k == self.ks[-1]:
+                        if k == self.ks[-1] and t == 'Rate':
                             self.is_save = True
-                    elif k == self.ks[-1] and self.metric_dict[t][m][k]['value'] < self.metric_dict[t][m][k]['best']:
+                    elif k == self.ks[-1] \
+                            and self.metric_dict[t][m][k]['value'] < self.metric_dict[t][m][k]['best'] \
+                            and t == 'Rate':
                         self.is_early_stop = True
 
     def print_best_metrics(self):
