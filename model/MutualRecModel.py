@@ -112,6 +112,7 @@ class MutualisicLayer(nn.Module):
         h_uP = self.consumption_mlp(torch.hstack([consumption_pref, raw_embed]))
         h_uS = self.social_mlp(torch.hstack([social_pref, raw_embed]))
 
+        # h_m = h_uP * h_uS + h_uP + h_uS
         h_m = h_uP * h_uS
 
         atten_P = torch.softmax(h_uP, dim=1)
