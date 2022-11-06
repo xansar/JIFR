@@ -14,3 +14,4 @@ from .MutualRecDataset import *
 from .MFDataset import *
 from .LightGCNDataset import *
 from .TrustSVDDataset import *
+from .FusionLightGCNDataset import *
