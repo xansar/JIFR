@@ -1,3 +1,6 @@
-/log
-/save
+.idea
+.ipynb_checkpoints
+save
+log
+__pycache__
 *.ipynb
