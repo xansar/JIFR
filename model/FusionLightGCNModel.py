@@ -31,7 +31,7 @@ class FusionLightGCNModel(nn.Module):
         super(FusionLightGCNModel, self).__init__()
         self.config = config
         self.embedding_size = eval(config['MODEL']['embedding_size'])
-        self.layer_num = eval(config['MODEL']['layer_num'])
+        self.layer_num = eval(config['MODEL']['gcn_layer_num'])
         self.task = config['TRAIN']['task']
         self.pred_user_num = eval(config['MODEL']['pred_user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
