@@ -4,3 +4,10 @@ save
 log
 __pycache__
 *.ipynb
+*.rate
+*.link
+*.pkl
+*.bin
+*.pth
+*/*/splited_data
+*/*/raw_data
