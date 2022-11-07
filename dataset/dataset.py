@@ -158,13 +158,13 @@ class SocialDataset(RateCommonDataset):
             graph_data = {
                 ('user', 'rate', 'item'): (u, i),
                 ('item', 'rated-by', 'user'): (i, u),
-                ('user', 'trust', 'user'): (u1, v),
                 ('user', 'trusted-by', 'user'): (v, u1)
             }
         else:
             graph_data = {
                 ('user', 'rate', 'item'): (u, i),
                 ('item', 'rated-by', 'user'): (i, u),
+                ('user', 'trust', 'user'): (u1, v),
                 ('user', 'trusted-by', 'user'): (v, u1)
             }
 
