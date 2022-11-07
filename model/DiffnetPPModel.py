@@ -40,7 +40,13 @@ class DiffusionLayer(nn.Module):
             rel: dglnn.GATv2Conv(self.embedding_size, self.embedding_size, num_heads=self.num_heads)
             for rel in rel_names
         })
-        self.att_score = nn.Sequential(
+        self.att_score_influence = nn.Sequential(
+            nn.Linear(2 * self.embedding_size, 2 * self.embedding_size),
+            nn.Linear(2 * self.embedding_size, 1),
+            nn.BatchNorm1d(1),
+            nn.LeakyReLU()
+        )
+        self.att_score_interest = nn.Sequential(
             nn.Linear(2 * self.embedding_size, 2 * self.embedding_size),
             nn.Linear(2 * self.embedding_size, 1),
             nn.BatchNorm1d(1),
@@ -63,8 +69,8 @@ class DiffusionLayer(nn.Module):
         dst = {'user': embedding['user']}
         p_hair = self.influence_diffusion_layer(g, (src, dst))['user'].squeeze(1)  # influence
         ## att
-        influence_att_score = self.att_score(torch.cat([embedding['user'], p_hair], dim=1))
-        interest_att_score = self.att_score(torch.cat([embedding['user'], q_hair], dim=1))
+        influence_att_score = self.att_score_influence(torch.cat([embedding['user'], p_hair], dim=1))
+        interest_att_score = self.att_score_interest(torch.cat([embedding['user'], q_hair], dim=1))
         gamma = torch.softmax(torch.cat([influence_att_score, interest_att_score], dim=1), dim=1)
         user_embedding = gamma[:, 0].unsqueeze(1) * p_hair + gamma[:, 1].unsqueeze(1) * q_hair + embedding['user']
         return {
