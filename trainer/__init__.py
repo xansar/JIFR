@@ -15,3 +15,4 @@ from .LightGCNTrainer import *
 from .MutualRecTrainer import *
 from .TrustSVDTrainer import *
 from .FusionLightGCNTrainer import *
+from .SVDPPTrainer import *

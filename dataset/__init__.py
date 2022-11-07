@@ -15,3 +15,4 @@ from .MFDataset import *
 from .LightGCNDataset import *
 from .TrustSVDDataset import *
 from .FusionLightGCNDataset import *
+from .SVDPPDataset import *

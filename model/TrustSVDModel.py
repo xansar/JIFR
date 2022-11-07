@@ -79,7 +79,6 @@ class TrustSVDModel(nn.Module):
 
         pos_score = self.pred(positive_graph, 'rate', res_embedding, bias) + self.global_bias
         neg_score = self.pred(negative_graph, 'rate', res_embedding, bias) + self.global_bias
-
         # 正则化
         ## social link reg
         with positive_graph.local_scope():
