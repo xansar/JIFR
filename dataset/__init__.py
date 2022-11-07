@@ -16,3 +16,4 @@ from .LightGCNDataset import *
 from .TrustSVDDataset import *
 from .FusionLightGCNDataset import *
 from .DiffnetPPDataset import *
+from .SVDPPDataset import *

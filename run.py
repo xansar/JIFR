@@ -25,7 +25,7 @@ from trainer import *
 from configparser import ConfigParser
 
 CommonModel = ['MF']
-GCNModel = ['LightGCN', 'TrustSVD', 'MutualRec', 'FusionLightGCN', 'DiffnetPP']
+GCNModel = ['LightGCN', 'TrustSVD', 'MutualRec', 'FusionLightGCN', 'DiffnetPP', 'SVDPP']
 
 class MyConfigParser(ConfigParser):
     def __init__(self, defaults=None):

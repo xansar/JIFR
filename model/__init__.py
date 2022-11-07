@@ -17,3 +17,4 @@ from .MutualRecModel import *
 from .TrustSVDModel import *
 from .FusionLightGCNModel import *
 from .DiffnetPPModel import *
+from .SVDPPModel import *
