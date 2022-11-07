@@ -10,10 +10,4 @@
 """
 
 # import lib
-from .MutualRecDataset import *
-from .MFDataset import *
-from .LightGCNDataset import *
-from .TrustSVDDataset import *
-from .FusionLightGCNDataset import *
-from .DiffnetPPDataset import *
-from .SVDPPDataset import *
+from .dataset import RateCommonDataset, SocialDataset
