@@ -27,6 +27,10 @@ from configparser import ConfigParser
 CommonModel = ['MF']
 GCNModel = ['LightGCN', 'TrustSVD', 'MutualRec', 'FusionLightGCN', 'DiffnetPP', 'SVDPP']
 
+use_common_datset = ['LightGCN', 'MF']
+use_social_dataset = ['MutualRec', 'FusionLightGCN', 'DiffnetPP']
+use_directed_social_dataset = ['TrustSVD', 'SVDPP']
+
 class MyConfigParser(ConfigParser):
     def __init__(self, defaults=None):
         super(MyConfigParser, self).__init__()
@@ -51,7 +55,7 @@ def setup_seed(seed):
 def parse_args():
     # Parses the arguments.
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('--config_pth', type=str, default='DiffnetPP.ini',
+    parser.add_argument('--config_pth', type=str, default='MF.ini',
                         help='Choose config')
     return parser.parse_args()
 
@@ -64,9 +68,16 @@ def run(config_pth):
     model_name = config['MODEL']['model_name']
     task = config['TRAIN']['task']
 
-    dataset_name = task + model_name
+    if model_name in use_common_datset:
+        dataset = RateCommonDataset(config)
+    else:
+        if model_name in use_social_dataset:
+            dataset = SocialDataset(config)
+        elif model_name in use_directed_social_dataset:
+            dataset = SocialDataset(config, directed=True)
+        else:
+            raise ValueError("Wrong Model Name!!!")
 
-    dataset = eval(dataset_name)(config)
     if model_name in CommonModel:
         model = eval(model_name + 'Model')(config)
     elif model_name in GCNModel:
