@@ -103,7 +103,8 @@ class SorecTrainer(BaseTrainer):
             self.optimizer.zero_grad()
             pos_pred, neg_pred, reg_loss, link_loss = self.model(
                 train_pos_g,
-                train_neg_g
+                train_pos_g,
+                train_neg_g,
             )
             neg_pred = neg_pred.reshape(-1, self.train_neg_num)
             rate_loss = self.loss_func(pos_pred, neg_pred)
@@ -118,7 +119,7 @@ class SorecTrainer(BaseTrainer):
                 pred_g = inputs['pred_g']
                 neg_g = self.construct_negative_graph(pred_g, self.neg_num, etype=('user', 'rate', 'item'))
                 self.model.eval()
-                pos_pred, neg_pred, reg_loss, link_loss = self.model.predict(
+                pos_pred, neg_pred, reg_loss, link_loss = self.model(
                     message_g,
                     pred_g,
                     neg_g

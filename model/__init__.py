@@ -10,13 +10,20 @@
 """
 
 # import lib
+from .loss import *
+
+# without social
 from .MFModel import *
 from .LightGCNModel import *
-from .loss import *
-from .MutualRecModel import *
+
+# classical social
 from .TrustSVDModel import *
-from .FusionLightGCNModel import *
-from .DiffnetPPModel import *
 from .SVDPPModel import *
 from .SorecModel import *
 from .SocialMFModel import *
+
+# gnn social
+from .MutualRecModel import *
+from .FusionLightGCNModel import *
+from .DiffnetPPModel import *
+from .GraphRecModel import *

@@ -64,44 +64,7 @@ class FusionLightGCNModel(nn.Module):
         )
         self.pred = HeteroDotProductPredictor()
 
-    def forward(self, positive_graph, negative_graph, social_network):
-        idx = {ntype: positive_graph.nodes(ntype) for ntype in positive_graph.ntypes}
-        pref_embedding = self.embedding(idx)
-        social_embedding = {
-            'user': torch.clone(pref_embedding['user'])
-        }
-        for i, layer in enumerate(self.preference_layers):
-            if i == 0:
-                embeddings = layer(positive_graph, pref_embedding)
-            else:
-                embeddings = layer(positive_graph, embeddings)
-            # print(embeddings)
-            # print(pref_embedding['user'].shape, embeddings['user'].shape)
-            # print(pref_embedding['item'].shape, embeddings['item'].shape)
-            pref_embedding['user'] = pref_embedding['user'] + embeddings['user'] * (1 / (i + 2))
-            pref_embedding['item'] = pref_embedding['item'] + embeddings['item'] * (1 / (i + 2))
-
-
-        for i, layer in enumerate(self.social_layers):
-            if i == 0:
-                embeddings = layer(social_network, social_embedding)
-            else:
-                embeddings = layer(social_network, embeddings)
-            # print(embeddings)
-            # print(pref_embedding['user'].shape, embeddings['user'].shape)
-            # print(pref_embedding['item'].shape, embeddings['item'].shape)
-            social_embedding['user'] = social_embedding['user'] + embeddings['user'] * (1 / (i + 2))
-
-        res_embedding = {
-            'user': self.user_mlp(torch.cat([pref_embedding['user'], social_embedding['user']], dim=1)) +
-                    pref_embedding['user'] + social_embedding['user'],
-            'item': pref_embedding['item']
-        }
-        pos_score = self.pred(positive_graph, res_embedding, 'rate')
-        neg_score = self.pred(negative_graph, res_embedding, 'rate')
-        return pos_score, neg_score
-
-    def predict(self, messege_g, pos_pred_g, neg_pred_g, social_network):
+    def forward(self, messege_g, pos_pred_g, neg_pred_g, social_network):
         idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
         pref_embedding = self.embedding(idx)
         social_embedding = {

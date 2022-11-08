@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 """
-@File    :   TrustSVDTrainer.py
+@File    :   GraphRecTrainer.py
 @Contact :   xansar@ruc.edu.cn
 
 @Modify Time      @Author    @Version    @Desciption
@@ -19,7 +19,7 @@ import os
 
 from .BaseTrainer import BaseTrainer
 
-class SocialMFTrainer(BaseTrainer):
+class GraphRecTrainer(BaseTrainer):
     def __init__(
             self,
             model: torch.nn.Module,
@@ -30,7 +30,7 @@ class SocialMFTrainer(BaseTrainer):
             dataset,
             config,
     ):
-        super(SocialMFTrainer, self).__init__(config)
+        super(GraphRecTrainer, self).__init__(config)
         # 读取数据
         self.dataset = dataset
         self.g = dataset[0]
@@ -64,6 +64,7 @@ class SocialMFTrainer(BaseTrainer):
         train_edges = {
             ('user', 'rate', 'item'): range(self.train_size),
             ('item', 'rated-by', 'user'): range(self.train_size),
+            ('user', 'trust', 'user'): range(self.train_link_size),
             ('user', 'trusted-by', 'user'): range(self.train_link_size)
         }
         train_g = dgl.edge_subgraph(self.g, train_edges, relabel_nodes=False)
@@ -71,6 +72,7 @@ class SocialMFTrainer(BaseTrainer):
         val_edges = {
             ('user', 'rate', 'item'): range(self.train_size, self.train_size + self.val_size),
             ('item', 'rated-by', 'user'): range(self.train_size, self.train_size + self.val_size),
+            ('user', 'trust', 'user'): range(self.train_link_size, self.train_link_size + self.val_link_size),
             ('user', 'trusted-by', 'user'): range(self.train_link_size, self.train_link_size + self.val_link_size)
         }
         val_pred_g = dgl.edge_subgraph(self.g, val_edges, relabel_nodes=False)
@@ -78,6 +80,7 @@ class SocialMFTrainer(BaseTrainer):
         test_edges = {
             ('user', 'rate', 'item'): range(self.train_size + self.val_size, self.g.num_edges(('user', 'rate', 'item'))),
             ('item', 'rated-by', 'user'): range(self.train_size + self.val_size, self.g.num_edges(('item', 'rated-by', 'user'))),
+            ('user', 'trust', 'user'): range(self.train_link_size + self.val_link_size, self.g.num_edges(('user', 'trusted-by', 'user'))),
             ('user', 'trusted-by', 'user'): range(self.train_link_size + self.val_link_size, self.g.num_edges(('user', 'trusted-by', 'user')))
         }
         test_pred_g = dgl.edge_subgraph(self.g, test_edges, relabel_nodes=False)
@@ -101,34 +104,32 @@ class SocialMFTrainer(BaseTrainer):
             train_neg_g = self.construct_negative_graph(train_pos_g, self.train_neg_num, etype=('user', 'rate', 'item'))
             self.model.train()
             self.optimizer.zero_grad()
-            pos_pred, neg_pred, reg_loss, link_loss = self.model(
+            pos_pred, neg_pred = self.model(
                 train_pos_g,
                 train_pos_g,
-                train_neg_g,
+                train_neg_g
             )
             neg_pred = neg_pred.reshape(-1, self.train_neg_num)
-            rate_loss = self.loss_func(pos_pred, neg_pred)
-            loss = rate_loss + reg_loss + link_loss
+            loss = self.loss_func(pos_pred, neg_pred)
             loss.backward()
             self.optimizer.step()
             self.lr_scheduler.step()
-            return loss.item(), rate_loss.item(), reg_loss.item(), link_loss.item()
+            return loss.item()
         elif mode == 'evaluate':
             with torch.no_grad():
                 message_g = inputs['message_g']
                 pred_g = inputs['pred_g']
                 neg_g = self.construct_negative_graph(pred_g, self.neg_num, etype=('user', 'rate', 'item'))
                 self.model.eval()
-                pos_pred, neg_pred, reg_loss, link_loss = self.model(
+                pos_pred, neg_pred = self.model(
                     message_g,
                     pred_g,
                     neg_g
                 )
                 neg_pred = neg_pred.reshape(-1, self.neg_num)
-                rate_loss = self.loss_func(pos_pred, neg_pred)
-                loss = rate_loss + reg_loss + link_loss
+                loss = self.loss_func(pos_pred, neg_pred)
                 self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu(), task=self.task)
-                return loss.item(), rate_loss.item(), reg_loss.item(), link_loss.item()
+                return loss.item()
         else:
             raise ValueError("Wrong Mode")
 
@@ -148,23 +149,24 @@ class SocialMFTrainer(BaseTrainer):
             and return loss
             """
 
-            loss, rate_loss, reg_loss, link_loss = self.step(mode='train', train_pos_g=train_g)
+            loss = self.step(
+                mode='train',
+                train_pos_g=train_g
+            )
             metric_str = f'Train Epoch: {e}\n' \
-                         f'Loss: {loss:.4f}\t' \
-                         f'Rate Loss: {rate_loss:.4f}\t' \
-                         f'Reg Loss: {reg_loss:.4f}\t' \
-                         f'Link Loss: {link_loss:.4f}\n'
+                         f'Loss: {loss:.4f}\n'
 
             if e % self.eval_step == 0:
                 # 在训练图上跑节点表示，在验证图上预测边的概率
                 self.metric.clear_metrics()
-                loss, rate_loss, reg_loss, link_loss = self.step(mode='evaluate', message_g=train_g, pred_g=val_pred_g)
+                loss = self.step(
+                    mode='evaluate',
+                    message_g=train_g,
+                    pred_g=val_pred_g
+                )
                 self.metric.get_batch_metrics()
                 metric_str += f'Evaluate Epoch: {e}\n' \
-                              f'Loss: {loss:.4f}\t' \
-                              f'Rate Loss: {rate_loss:.4f}\t' \
-                              f'Reg Loss: {reg_loss:.4f}\t' \
-                              f'Link Loss: {link_loss:.4f}\n'
+                              f'Loss: {loss:.4f}\n'
                 metric_str = self._generate_metric_str(metric_str)
             tqdm.write(self._log(metric_str))
 
@@ -186,13 +188,14 @@ class SocialMFTrainer(BaseTrainer):
         self._load_model(self.save_pth)
         self.metric.clear_metrics()
         # 在训练图上跑节点表示，在测试图上预测边的概率
-        loss, rate_loss, reg_loss, link_loss = self.step(mode='evaluate', message_g=train_g, pred_g=test_pred_g)
+        loss = self.step(
+            mode='evaluate',
+            message_g=train_g,
+            pred_g=test_pred_g
+        )
         self.metric.get_batch_metrics()
         metric_str =  f'Test Epoch: \n' \
-                      f'Loss: {loss:.4f}\t' \
-                      f'Rate Loss: {rate_loss:.4f}\t' \
-                      f'Reg Loss: {reg_loss:.4f}\t' \
-                      f'Link Loss: {link_loss:.4f}\n'
+                      f'Loss: {loss:.4f}\n'
         metric_str = self._generate_metric_str(metric_str)
         tqdm.write(self._log(metric_str))
         tqdm.write("=" * 10 + "TRAIN END" + "=" * 10)

@@ -40,14 +40,7 @@ class MFModel(nn.Module):
         )
         self.pred = HeteroDotProductPredictor()
 
-    def forward(self, positive_graph, negative_graph):
-        idx = {ntype: positive_graph.nodes(ntype) for ntype in positive_graph.ntypes}
-        res_embedding = self.embedding(idx)
-        pos_score = self.pred(positive_graph, res_embedding, 'rate')
-        neg_score = self.pred(negative_graph, res_embedding, 'rate')
-        return pos_score, neg_score
-
-    def predict(self, messege_g, pos_pred_g, neg_pred_g):
+    def forward(self, messege_g, pos_pred_g, neg_pred_g):
         idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
         res_embedding = self.embedding(idx)
         pos_score = self.pred(pos_pred_g, res_embedding, 'rate')

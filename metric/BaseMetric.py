@@ -47,9 +47,11 @@ class BaseMetric:
     def compute_metrics(self, *input_, task):
         pos_pred, neg_pred = input_
         # total_pred, bsz * 101, 第一维是正样本预测值
-        total_pred = torch.cat([pos_pred, neg_pred], dim=1)
+        # 随机将pos插入一个位置idx
+        target_idx = torch.randint(0, neg_pred.shape[1] + 1, (1,))
+        total_pred = torch.cat([neg_pred[:, :target_idx], pos_pred, neg_pred[:, target_idx:]], dim=1)
         for m in self.metric_name:
-            eval(f'self._compute_{m}')(total_pred, task)
+            eval(f'self._compute_{m}')(total_pred, target_idx, task)
 
     def get_batch_metrics(self):
         for t in self.task_lst:
@@ -76,19 +78,19 @@ class BaseMetric:
                 metric_str += '\n'
         return metric_str
 
-    def _compute_HR(self, total_pred, task):
+    def _compute_HR(self, total_pred, target_idx, task):
         for k in self.ks:
             _, topk_id = torch.topk(total_pred, k)
-            # 0位置就是正样本
-            hit = (topk_id == 0).count_nonzero(dim=1).clamp(max=1).sum()
+            # target_idx位置就是正样本
+            hit = (topk_id == target_idx).count_nonzero(dim=1).clamp(max=1).sum()
             self.metric_dict[task]['HR'][k]['value'] = hit.item()
             self.metric_dict[task]['HR'][k]['cnt'] = total_pred.shape[0]
 
-    def _compute_nDCG(self, total_pred, task):
+    def _compute_nDCG(self, total_pred, target_idx, task):
         for k in self.ks:
             _, topk_id = torch.topk(total_pred, k)
-            # 0位置就是正样本
-            value, idx = torch.topk((topk_id == 0).int(), 1)
+            # target_idx位置就是正样本
+            value, idx = torch.topk((topk_id == target_idx).int(), 1)
             nDCG = (value / torch.log2(idx + 2)).sum()  # 这里加2是因为idx从0开始计数
             self.metric_dict[task]['nDCG'][k]['value'] = nDCG.item()
             self.metric_dict[task]['nDCG'][k]['cnt'] = total_pred.shape[0]

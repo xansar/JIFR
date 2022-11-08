@@ -93,6 +93,7 @@ class LightGCNTrainer(BaseTrainer):
             self.optimizer.zero_grad()
             pos_pred, neg_pred = self.model(
                 train_pos_g,
+                train_pos_g,
                 train_neg_g
             )
             neg_pred = neg_pred.reshape(-1, self.train_neg_num)
@@ -107,7 +108,7 @@ class LightGCNTrainer(BaseTrainer):
                 pred_g = inputs['pred_g']
                 neg_g = self.construct_negative_graph(pred_g, self.neg_num, etype=('user', 'rate', 'item'))
                 self.model.eval()
-                pos_pred, neg_pred = self.model.predict(
+                pos_pred, neg_pred = self.model(
                     message_g,
                     pred_g,
                     neg_g

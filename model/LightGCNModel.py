@@ -49,24 +49,7 @@ class LightGCNModel(nn.Module):
             )
         self.pred = HeteroDotProductPredictor()
 
-    def forward(self, positive_graph, negative_graph):
-        idx = {ntype: positive_graph.nodes(ntype) for ntype in positive_graph.ntypes}
-        res_embedding = self.embedding(idx)
-        for i, layer in enumerate(self.layers):
-            if i == 0:
-                embeddings = layer(positive_graph, res_embedding)
-            else:
-                embeddings = layer(positive_graph, embeddings)
-            # print(embeddings)
-            # print(res_embedding['user'].shape, embeddings['user'].shape)
-            # print(res_embedding['item'].shape, embeddings['item'].shape)
-            res_embedding['user'] = res_embedding['user'] + embeddings['user'] * (1 / (i + 2))
-            res_embedding['item'] = res_embedding['item'] + embeddings['item'] * (1 / (i + 2))
-        pos_score = self.pred(positive_graph, res_embedding, 'rate')
-        neg_score = self.pred(negative_graph, res_embedding, 'rate')
-        return pos_score, neg_score
-
-    def predict(self, messege_g, pos_pred_g, neg_pred_g):
+    def forward(self, messege_g, pos_pred_g, neg_pred_g):
         idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
         res_embedding = self.embedding(idx)
         for i, layer in enumerate(self.layers):
