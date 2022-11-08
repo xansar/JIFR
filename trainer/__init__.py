@@ -17,6 +17,7 @@ from .LightGCNTrainer import *
 from .TrustSVDTrainer import *
 from .SVDPPTrainer import *
 from .SorecTrainer import *
+from .SocialMFTrainer import *
 
 # gnn social
 from .FusionLightGCNTrainer import *
