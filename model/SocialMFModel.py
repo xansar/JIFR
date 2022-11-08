@@ -26,9 +26,9 @@ class HeteroDotProductPredictor(nn.Module):
             return (graph.edges[etype].data['score'])
 
 
-class SorecModel(nn.Module):
+class SocialMFModel(nn.Module):
     def __init__(self, config, rel_names):
-        super(SorecModel, self).__init__()
+        super(SocialMFModel, self).__init__()
         self.config = config
         self.embedding_size = eval(config['MODEL']['embedding_size'])
         self.task = config['TRAIN']['task']
@@ -48,14 +48,6 @@ class SorecModel(nn.Module):
         self.bias = dglnn.HeteroEmbedding(
             {'user': self.total_user_num, 'item': self.item_num}, 1
         )
-        self.y_gcn = dglnn.HeteroGraphConv({
-            rel: dglnn.GraphConv(self.embedding_size, self.embedding_size, norm='left', weight=False, bias=False)
-            for rel in rel_names
-        })
-        self.w_gcn = dglnn.HeteroGraphConv({
-            rel: dglnn.GraphConv(self.embedding_size, self.embedding_size, norm='left', weight=False, bias=False)
-            for rel in rel_names
-        })
         self.u_bias = nn.Embedding(self.total_user_num, 1)
         self.i_bias = nn.Embedding(self.item_num, 1)
         self.global_bias = nn.Parameter(torch.tensor(global_bias), requires_grad=False)
@@ -66,10 +58,7 @@ class SorecModel(nn.Module):
     def forward(self, positive_graph, negative_graph):
         # etype: rate, rated-by, trusted-by
         idx = {ntype: positive_graph.nodes(ntype) for ntype in positive_graph.ntypes}
-        y_w = self.y_w_embedding(idx)   # {'user': w, 'item': y}
         p_q = self.p_q_embedding(idx)   # {'user': p, 'item': q}
-        normed_y = self.y_gcn(positive_graph, ({'item': y_w['item']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
-        normed_w = self.w_gcn(positive_graph, ({'user': y_w['user']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
         bias = self.bias(idx)
         res_embedding = {'user': p_q['user'], 'item': p_q['item']}
 
@@ -80,17 +69,13 @@ class SorecModel(nn.Module):
         with positive_graph.local_scope():
             r=nn.Sigmoid()
             positive_graph.nodes['user'].data['p'] = p_q['user']
-            positive_graph.nodes['user'].data['w'] = y_w['user']
-            # 这里是v trusted-by u，所以前面的节点特征用w，后面的用p
-            positive_graph.apply_edges(fn.u_dot_v('w', 'p', 'score'), etype='trusted-by')
-            positive_graph.nodes['user'].data['in']=positive_graph.in_degrees(etype='trusted-by').unsqueeze(1).float()
-            positive_graph.nodes['user'].data['out']=positive_graph.out_degrees(etype='trusted-by').unsqueeze(1).float()
-            positive_graph.apply_edges(lambda edges: {'c' :torch.sqrt(edges.dst['in']/(edges.src['out'] + edges.dst['in']))}, etype='trusted-by')
-            link_label=positive_graph.edges['trusted-by'].data['c']
-            link_pred = r(positive_graph.edges['trusted-by'].data['score'])
+            positive_graph.update_all(fn.copy_u('p','m'),fn.mean('m', 'ft'),etype='trusted-by')
+            
+           
+            link_label=positive_graph.nodes['user'].data['p']
+            link_pred = positive_graph.nodes['user'].data['ft']
             
         params = {
-            'y_w': y_w,
             'p_q': p_q
         }
         reg_loss, link_loss = self.reg_loss(positive_graph, params, link_pred,link_label)
@@ -99,12 +84,7 @@ class SorecModel(nn.Module):
     def predict(self, messege_g, pos_pred_g, neg_pred_g):
         # etype: rate, rated-by, trusted-by
         idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
-        y_w = self.y_w_embedding(idx)  # {'user': w, 'item': y}
         p_q = self.p_q_embedding(idx)  # {'user': p, 'item': q}
-        normed_y = self.y_gcn(messege_g,
-                              ({'item': y_w['item']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
-        normed_w = self.w_gcn(messege_g,
-                              ({'user': y_w['user']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
         bias = self.bias(idx)
         res_embedding = {'user':p_q['user'], 'item': p_q['item']}
 
@@ -116,18 +96,13 @@ class SorecModel(nn.Module):
         with messege_g.local_scope():
             r=nn.Sigmoid()
             messege_g.nodes['user'].data['p'] = p_q['user']
-            messege_g.nodes['user'].data['w'] = y_w['user']
-            # 这里是v trusted-by u，所以前面的节点特征用w，后面的用p
-            messege_g.apply_edges(fn.u_dot_v('w', 'p', 'score'), etype='trusted-by')
-            link_pred = r(messege_g.edges['trusted-by'].data['score'])
-
-            messege_g.nodes['user'].data['in']=messege_g.in_degrees(etype='trusted-by').unsqueeze(1).float()
-            messege_g.nodes['user'].data['out']=messege_g.out_degrees(etype='trusted-by').unsqueeze(1).float()
-            messege_g.apply_edges(lambda edges: {'c' :torch.sqrt(edges.dst['in']/(edges.src['out'] + edges.dst['in']))}, etype='trusted-by')
-            link_label=messege_g.edges['trusted-by'].data['c']
+            messege_g.update_all(fn.copy_u('p','m'),fn.mean('m', 'ft'),etype='trusted-by')
+            
+           
+            link_label=messege_g.nodes['user'].data['p']
+            link_pred = messege_g.nodes['user'].data['ft']
 
         params = {
-            'y_w': y_w,
             'p_q': p_q
         }
         reg_loss, link_loss = self.reg_loss(messege_g, params, link_pred,link_label)
@@ -142,12 +117,10 @@ class RegLoss(nn.Module):
 
     def forward(self, graph, params, link_pred,link_label):
         # link_loss
-        link_loss = self.link_mse(link_pred, link_label)
+        link_loss = self.lamda_t * torch.norm(link_pred-link_label)
         # 正则化项
         p_q = params['p_q']
-        y_w = params['y_w']
 
         reg_p_u = self.lamda * torch.norm(p_q['user'])
         reg_q_j = self.lamda * torch.norm(p_q['item'])
-        reg_w_v = self.lamda * torch.norm(y_w['user'])
-        return reg_p_u + reg_q_j+reg_w_v, link_loss
+        return reg_p_u + reg_q_j, link_loss
