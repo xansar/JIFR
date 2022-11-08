@@ -9,12 +9,17 @@
 2022/10/25 10:01   zxx      1.0         None
 """
 
-# import lib
+# without social
 from .MFTrainer import *
 from .LightGCNTrainer import *
-from .MutualRecTrainer import *
+
+# classical social
 from .TrustSVDTrainer import *
-from .FusionLightGCNTrainer import *
-from .DiffnetPPTrainer import *
 from .SVDPPTrainer import *
 from .SorecTrainer import *
+
+# gnn social
+from .FusionLightGCNTrainer import *
+from .DiffnetPPTrainer import *
+from .MutualRecTrainer import *
+from .GraphRecTrainer import *
