@@ -191,40 +191,7 @@ class MutualRecModel(nn.Module):
 
         self.pred = HeteroDotProductPredictor()
 
-    def forward(self, train_pos_g, train_neg_rate_g, train_neg_link_g, social_network, laplacian_lambda_max):
-        idx = {ntype: train_pos_g.nodes(ntype) for ntype in train_pos_g.ntypes}
-        user_item_embed = self.embedding(idx)
-        # item_embed = self.embedding({'item': g.nodes('item')})
-        # print(user_item_embed)
-        user_embed = self.embedding_user_BN(user_item_embed['user'])
-        item_embed = self.embedding_item_BN(user_item_embed['item'])
-
-        user_item_embed = self.spatial_atten_layer(train_pos_g, user_embed, item_embed)
-        user_social_embed = self.spectral_atten_layer(social_network, user_embed, laplacian_lambda_max)
-
-        h_miu_mP, h_miu_mS = self.mutualistic_layer(user_embed, user_item_embed, user_social_embed)
-
-        h_new_P, h_new_S = self.prediction_layer(
-            h_miu_mP = h_miu_mP,
-            h_miu_mS = h_miu_mS,
-        )
-        res_P_embed = {
-            'user': h_new_P,
-            'item': item_embed
-        }
-        pos_rate_score = self.pred(train_pos_g, res_P_embed, 'rate')
-        neg_rate_score = self.pred(train_neg_rate_g, res_P_embed, 'rate')
-
-        res_S_embed = {
-            'user': h_new_S,
-            'item': item_embed,
-            'raw_user': user_embed
-        }
-        pos_link_score = self.pred(train_pos_g, res_S_embed, 'trust')
-        neg_link_score = self.pred(train_neg_link_g, res_S_embed, 'trust')
-        return pos_rate_score, neg_rate_score, pos_link_score, neg_link_score
-
-    def predict(self, message_g, pos_pred_g, neg_pred_rate_g, neg_pred_link_g, social_network, laplacian_lambda_max):
+    def forward(self, message_g, pos_pred_g, neg_pred_rate_g, neg_pred_link_g, social_network, laplacian_lambda_max):
         idx = {ntype: message_g.nodes(ntype) for ntype in message_g.ntypes}
         user_item_embed = self.embedding(idx)
         # item_embed = self.embedding({'item': g.nodes('item')})

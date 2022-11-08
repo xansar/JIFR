@@ -55,33 +55,7 @@ class SocialMFModel(nn.Module):
 
         self.reg_loss = RegLoss(lamda=self.lamda, lamda_t=self.lamda_t)
 
-    def forward(self, positive_graph, negative_graph):
-        # etype: rate, rated-by, trusted-by
-        idx = {ntype: positive_graph.nodes(ntype) for ntype in positive_graph.ntypes}
-        p_q = self.p_q_embedding(idx)   # {'user': p, 'item': q}
-        bias = self.bias(idx)
-        res_embedding = {'user': p_q['user'], 'item': p_q['item']}
-
-        pos_score = self.pred(positive_graph, 'rate', res_embedding, bias)
-        neg_score = self.pred(negative_graph, 'rate', res_embedding, bias)
-        # 正则化
-        ## social link reg
-        with positive_graph.local_scope():
-            r=nn.Sigmoid()
-            positive_graph.nodes['user'].data['p'] = p_q['user']
-            positive_graph.update_all(fn.copy_u('p','m'),fn.mean('m', 'ft'),etype='trusted-by')
-            
-           
-            link_label=positive_graph.nodes['user'].data['p']
-            link_pred = positive_graph.nodes['user'].data['ft']
-            
-        params = {
-            'p_q': p_q
-        }
-        reg_loss, link_loss = self.reg_loss(positive_graph, params, link_pred,link_label)
-        return pos_score, neg_score, reg_loss, link_loss
-
-    def predict(self, messege_g, pos_pred_g, neg_pred_g):
+    def forward(self, messege_g, pos_pred_g, neg_pred_g):
         # etype: rate, rated-by, trusted-by
         idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
         p_q = self.p_q_embedding(idx)  # {'user': p, 'item': q}

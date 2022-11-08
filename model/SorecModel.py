@@ -63,40 +63,7 @@ class SorecModel(nn.Module):
 
         self.reg_loss = RegLoss(lamda=self.lamda, lamda_t=self.lamda_t)
 
-    def forward(self, positive_graph, negative_graph):
-        # etype: rate, rated-by, trusted-by
-        idx = {ntype: positive_graph.nodes(ntype) for ntype in positive_graph.ntypes}
-        y_w = self.y_w_embedding(idx)   # {'user': w, 'item': y}
-        p_q = self.p_q_embedding(idx)   # {'user': p, 'item': q}
-        normed_y = self.y_gcn(positive_graph, ({'item': y_w['item']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
-        normed_w = self.w_gcn(positive_graph, ({'user': y_w['user']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
-        bias = self.bias(idx)
-        res_embedding = {'user': p_q['user'], 'item': p_q['item']}
-
-        pos_score = self.pred(positive_graph, 'rate', res_embedding, bias)
-        neg_score = self.pred(negative_graph, 'rate', res_embedding, bias)
-        # 正则化
-        ## social link reg
-        with positive_graph.local_scope():
-            r=nn.Sigmoid()
-            positive_graph.nodes['user'].data['p'] = p_q['user']
-            positive_graph.nodes['user'].data['w'] = y_w['user']
-            # 这里是v trusted-by u，所以前面的节点特征用w，后面的用p
-            positive_graph.apply_edges(fn.u_dot_v('w', 'p', 'score'), etype='trusted-by')
-            positive_graph.nodes['user'].data['in']=positive_graph.in_degrees(etype='trusted-by').unsqueeze(1).float()
-            positive_graph.nodes['user'].data['out']=positive_graph.out_degrees(etype='trusted-by').unsqueeze(1).float()
-            positive_graph.apply_edges(lambda edges: {'c' :torch.sqrt(edges.dst['in']/(edges.src['out'] + edges.dst['in']))}, etype='trusted-by')
-            link_label=positive_graph.edges['trusted-by'].data['c']
-            link_pred = r(positive_graph.edges['trusted-by'].data['score'])
-            
-        params = {
-            'y_w': y_w,
-            'p_q': p_q
-        }
-        reg_loss, link_loss = self.reg_loss(positive_graph, params, link_pred,link_label)
-        return pos_score, neg_score, reg_loss, link_loss
-
-    def predict(self, messege_g, pos_pred_g, neg_pred_g):
+    def forward(self, messege_g, pos_pred_g, neg_pred_g):
         # etype: rate, rated-by, trusted-by
         idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
         y_w = self.y_w_embedding(idx)  # {'user': w, 'item': y}

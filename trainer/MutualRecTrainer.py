@@ -137,7 +137,7 @@ class MutualRecTrainer(BaseTrainer):
                                                                  etype=('user', 'trust', 'user'))
 
                 self.model.eval()
-                pos_rate_pred, neg_rate_pred, pos_link_pred, neg_link_pred = self.model.predict(
+                pos_rate_pred, neg_rate_pred, pos_link_pred, neg_link_pred = self.model(
                     message_g,
                     pred_g,
                     neg_pred_rate_g,
