@@ -134,6 +134,7 @@ class SocialDataset(RateCommonDataset):
         record = {'rate': {}, 'link': {}}
         u = np.empty(0)
         i = np.empty(0)
+        r = np.empty(0)
         u1 = np.empty(0)
         v = np.empty(0)
         # 将所有的边都读到总图中
@@ -142,6 +143,7 @@ class SocialDataset(RateCommonDataset):
             record['rate'][mode] = np.loadtxt(rate_pth, delimiter=',', dtype=np.float32)
             u = np.concatenate([u, record['rate'][mode][:, 0]])
             i = np.concatenate([i, record['rate'][mode][:, 1]])
+            r = np.concatenate([r, record['rate'][mode][:, 2]])
 
             link_pth = os.path.join(self.data_pth, mode + '.link')
             record['link'][mode] = np.loadtxt(link_pth, delimiter=',', dtype=np.float32)
@@ -176,6 +178,9 @@ class SocialDataset(RateCommonDataset):
             data_dict=graph_data,
             num_nodes_dict=num_nodes
         )
+        self._g.edges['rate'].data['rating'] = torch.tensor(r, dtype=torch.long)
+        self._g.edges['rated-by'].data['rating'] = torch.tensor(r, dtype=torch.long)
+
         print('=' * 20 + 'construct graph finished' + '=' * 20)
 
         # 保存
