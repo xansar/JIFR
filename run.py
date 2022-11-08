@@ -25,10 +25,10 @@ from trainer import *
 from configparser import ConfigParser
 
 CommonModel = ['MF']
-GCNModel = ['LightGCN', 'TrustSVD', 'MutualRec', 'FusionLightGCN', 'DiffnetPP', 'SVDPP','Sorec']
+GCNModel = ['LightGCN', 'TrustSVD', 'SVDPP', 'Sorec', 'MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec']
 
 use_common_datset = ['LightGCN', 'MF']
-use_social_dataset = ['MutualRec', 'FusionLightGCN', 'DiffnetPP']
+use_social_dataset = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec']
 use_directed_social_dataset = ['TrustSVD', 'SVDPP','Sorec']
 
 class MyConfigParser(ConfigParser):
@@ -55,7 +55,7 @@ def setup_seed(seed):
 def parse_args():
     # Parses the arguments.
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('--config_pth', type=str, default='SVDPP.ini',
+    parser.add_argument('--config_pth', type=str, default='GraphRec.ini',
                         help='Choose config')
     return parser.parse_args()
 
