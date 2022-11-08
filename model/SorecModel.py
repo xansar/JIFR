@@ -3,7 +3,6 @@
 """
 @File    :   TrustSVDModel.py
 @Contact :   xansar@ruc.edu.cn
-
 @Modify Time      @Author    @Version    @Desciption
 ------------      -------    --------    -----------
 2022/11/4 19:19   zxx      1.0         None
@@ -15,24 +14,21 @@ import torch.nn as nn
 import dgl.nn.pytorch as dglnn
 import dgl.function as fn
 
-
 class HeteroDotProductPredictor(nn.Module):
     def forward(self, graph, etype, h, b=None):
+        r=nn.Sigmoid()
         # h contains the node representations for each node type computed from
         # the GNN defined in the previous section (Section 5.1).
         with graph.local_scope():
             graph.ndata['h'] = h
             graph.apply_edges(fn.u_dot_v('h', 'h', 'score'), etype=etype)
-            if b is not None:
-                graph.ndata['b'] = b
-                graph.apply_edges(fn.e_add_u('score', 'b', 'score'), etype=etype)
-                graph.apply_edges(fn.v_add_e('b', 'score', 'score'), etype=etype)
-            return graph.edges[etype].data['score']
+            #sigmoid is not used here cause the aim is to caculate HR and NDCG
+            return (graph.edges[etype].data['score'])
 
 
-class SVDPPModel(nn.Module):
+class SorecModel(nn.Module):
     def __init__(self, config, rel_names):
-        super(SVDPPModel, self).__init__()
+        super(SorecModel, self).__init__()
         self.config = config
         self.embedding_size = eval(config['MODEL']['embedding_size'])
         self.task = config['TRAIN']['task']
@@ -75,26 +71,30 @@ class SVDPPModel(nn.Module):
         normed_y = self.y_gcn(positive_graph, ({'item': y_w['item']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
         normed_w = self.w_gcn(positive_graph, ({'user': y_w['user']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
         bias = self.bias(idx)
-        res_embedding = {'user': normed_y['user'] + p_q['user'], 'item': p_q['item']}
+        res_embedding = {'user': p_q['user'], 'item': p_q['item']}
 
-        pos_score = self.pred(positive_graph, 'rate', res_embedding, bias) + self.global_bias
-        neg_score = self.pred(negative_graph, 'rate', res_embedding, bias) + self.global_bias
+        pos_score = self.pred(positive_graph, 'rate', res_embedding, bias)
+        neg_score = self.pred(negative_graph, 'rate', res_embedding, bias)
         # 正则化
         ## social link reg
         with positive_graph.local_scope():
+            r=nn.Sigmoid()
             positive_graph.nodes['user'].data['p'] = p_q['user']
             positive_graph.nodes['user'].data['w'] = y_w['user']
             # 这里是v trusted-by u，所以前面的节点特征用w，后面的用p
             positive_graph.apply_edges(fn.u_dot_v('w', 'p', 'score'), etype='trusted-by')
-            link_pred = positive_graph.edges['trusted-by'].data['score']
-
+            positive_graph.nodes['user'].data['in']=positive_graph.in_degrees(etype='trusted-by').unsqueeze(1).float()
+            positive_graph.nodes['user'].data['out']=positive_graph.out_degrees(etype='trusted-by').unsqueeze(1).float()
+            positive_graph.apply_edges(lambda edges: {'c' :torch.sqrt(edges.dst['in']/(edges.src['out'] + edges.dst['in']))}, etype='trusted-by')
+            link_label=positive_graph.edges['trusted-by'].data['c']
+            link_pred = r(positive_graph.edges['trusted-by'].data['score'])
+            
         params = {
-            'bias': bias,
             'y_w': y_w,
             'p_q': p_q
         }
-        reg_loss= self.reg_loss(positive_graph, params, link_pred)
-        return pos_score, neg_score, reg_loss
+        reg_loss, link_loss = self.reg_loss(positive_graph, params, link_pred,link_label)
+        return pos_score, neg_score, reg_loss, link_loss
 
     def predict(self, messege_g, pos_pred_g, neg_pred_g):
         # etype: rate, rated-by, trusted-by
@@ -106,27 +106,32 @@ class SVDPPModel(nn.Module):
         normed_w = self.w_gcn(messege_g,
                               ({'user': y_w['user']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
         bias = self.bias(idx)
-        res_embedding = {'user': normed_y['user'] + p_q['user'], 'item': p_q['item']}
+        res_embedding = {'user':p_q['user'], 'item': p_q['item']}
 
-        pos_score = self.pred(pos_pred_g, 'rate', res_embedding, bias) + self.global_bias
-        neg_score = self.pred(neg_pred_g, 'rate', res_embedding, bias) + self.global_bias
+        pos_score = self.pred(pos_pred_g, 'rate', res_embedding, bias)
+        neg_score = self.pred(neg_pred_g, 'rate', res_embedding, bias) 
 
         # 正则化
         ## social link reg
         with messege_g.local_scope():
+            r=nn.Sigmoid()
             messege_g.nodes['user'].data['p'] = p_q['user']
             messege_g.nodes['user'].data['w'] = y_w['user']
             # 这里是v trusted-by u，所以前面的节点特征用w，后面的用p
             messege_g.apply_edges(fn.u_dot_v('w', 'p', 'score'), etype='trusted-by')
-            link_pred = messege_g.edges['trusted-by'].data['score']
+            link_pred = r(messege_g.edges['trusted-by'].data['score'])
+
+            messege_g.nodes['user'].data['in']=messege_g.in_degrees(etype='trusted-by').unsqueeze(1).float()
+            messege_g.nodes['user'].data['out']=messege_g.out_degrees(etype='trusted-by').unsqueeze(1).float()
+            messege_g.apply_edges(lambda edges: {'c' :torch.sqrt(edges.dst['in']/(edges.src['out'] + edges.dst['in']))}, etype='trusted-by')
+            link_label=messege_g.edges['trusted-by'].data['c']
 
         params = {
-            'bias': bias,
             'y_w': y_w,
             'p_q': p_q
         }
-        reg_loss= self.reg_loss(messege_g, params, link_pred)
-        return pos_score, neg_score, reg_loss
+        reg_loss, link_loss = self.reg_loss(messege_g, params, link_pred,link_label)
+        return pos_score, neg_score, reg_loss, link_loss
 
 class RegLoss(nn.Module):
     def __init__(self, lamda=0.5, lamda_t=0.45):
@@ -135,25 +140,14 @@ class RegLoss(nn.Module):
         self.lamda_t = lamda_t
         self.link_mse = nn.MSELoss()
 
-    def forward(self, graph, params, link_pred):
-
+    def forward(self, graph, params, link_pred,link_label):
+        # link_loss
+        link_loss = self.link_mse(link_pred, link_label)
         # 正则化项
-        bias = params['bias']
         p_q = params['p_q']
         y_w = params['y_w']
 
-        I_u_factor = graph.out_degrees(etype='rate')   # total_user_num
-        reg_b_u = torch.mean(self.lamda * I_u_factor * torch.norm(bias['user']))
-
-        U_j_factor = graph.out_degrees(etype='rated-by')   # item_num
-        reg_b_j = torch.mean(self.lamda * U_j_factor * torch.norm(bias['item']))
-
-        ## in_degrees+trusted-by——表示当前用户相信的人的数量
-        T_u_factor = graph.in_degrees(etype='trusted-by')   # total_user_num
-        reg_p_u = torch.mean(self.lamda * I_u_factor* torch.norm(p_q['user']))
-
-        reg_q_j = torch.mean(self.lamda * U_j_factor * torch.norm(p_q['item']))
-
-        reg_y_i = torch.mean(self.lamda * U_j_factor * torch.norm(y_w['item']))
-
-        return reg_b_u + reg_b_j + reg_p_u + reg_q_j + reg_y_i
+        reg_p_u = self.lamda * torch.norm(p_q['user'])
+        reg_q_j = self.lamda * torch.norm(p_q['item'])
+        reg_w_v = self.lamda * torch.norm(y_w['user'])
+        return reg_p_u + reg_q_j +reg_w_v, link_loss

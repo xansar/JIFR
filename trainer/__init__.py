@@ -17,3 +17,4 @@ from .TrustSVDTrainer import *
 from .FusionLightGCNTrainer import *
 from .DiffnetPPTrainer import *
 from .SVDPPTrainer import *
+from .SorecTrainer import *
