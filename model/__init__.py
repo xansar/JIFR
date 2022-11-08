@@ -18,3 +18,4 @@ from .TrustSVDModel import *
 from .FusionLightGCNModel import *
 from .DiffnetPPModel import *
 from .SVDPPModel import *
+from .SorecModel import *

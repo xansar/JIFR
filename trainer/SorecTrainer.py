@@ -19,7 +19,7 @@ import os
 
 from .BaseTrainer import BaseTrainer
 
-class SVDPPTrainer(BaseTrainer):
+class SorecTrainer(BaseTrainer):
     def __init__(
             self,
             model: torch.nn.Module,
@@ -30,7 +30,7 @@ class SVDPPTrainer(BaseTrainer):
             dataset,
             config,
     ):
-        super(SVDPPTrainer, self).__init__(config)
+        super(SorecTrainer, self).__init__(config)
         # 读取数据
         self.dataset = dataset
         self.g = dataset[0]
@@ -101,33 +101,33 @@ class SVDPPTrainer(BaseTrainer):
             train_neg_g = self.construct_negative_graph(train_pos_g, self.train_neg_num, etype=('user', 'rate', 'item'))
             self.model.train()
             self.optimizer.zero_grad()
-            pos_pred, neg_pred, reg_loss= self.model(
+            pos_pred, neg_pred, reg_loss, link_loss = self.model(
                 train_pos_g,
                 train_neg_g
             )
             neg_pred = neg_pred.reshape(-1, self.train_neg_num)
             rate_loss = self.loss_func(pos_pred, neg_pred)
-            loss = rate_loss + reg_loss 
+            loss = rate_loss + reg_loss + link_loss
             loss.backward()
             self.optimizer.step()
             self.lr_scheduler.step()
-            return loss.item(), rate_loss.item(), reg_loss.item()
+            return loss.item(), rate_loss.item(), reg_loss.item(), link_loss.item()
         elif mode == 'evaluate':
             with torch.no_grad():
                 message_g = inputs['message_g']
                 pred_g = inputs['pred_g']
                 neg_g = self.construct_negative_graph(pred_g, self.neg_num, etype=('user', 'rate', 'item'))
                 self.model.eval()
-                pos_pred, neg_pred, reg_loss = self.model.predict(
+                pos_pred, neg_pred, reg_loss, link_loss = self.model.predict(
                     message_g,
                     pred_g,
                     neg_g
                 )
                 neg_pred = neg_pred.reshape(-1, self.neg_num)
                 rate_loss = self.loss_func(pos_pred, neg_pred)
-                loss = rate_loss + reg_loss
+                loss = rate_loss + reg_loss + link_loss
                 self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu(), task=self.task)
-                return loss.item(), rate_loss.item(), reg_loss.item()
+                return loss.item(), rate_loss.item(), reg_loss.item(), link_loss.item()
         else:
             raise ValueError("Wrong Mode")
 
@@ -147,21 +147,23 @@ class SVDPPTrainer(BaseTrainer):
             and return loss
             """
 
-            loss, rate_loss, reg_loss = self.step(mode='train', train_pos_g=train_g)
+            loss, rate_loss, reg_loss, link_loss = self.step(mode='train', train_pos_g=train_g)
             metric_str = f'Train Epoch: {e}\n' \
                          f'Loss: {loss:.4f}\t' \
                          f'Rate Loss: {rate_loss:.4f}\t' \
-                         f'Reg Loss: {reg_loss:.4f}\n' 
+                         f'Reg Loss: {reg_loss:.4f}\t' \
+                         f'Link Loss: {link_loss:.4f}\n'
 
             if e % self.eval_step == 0:
                 # 在训练图上跑节点表示，在验证图上预测边的概率
                 self.metric.clear_metrics()
-                loss, rate_loss, reg_loss= self.step(mode='evaluate', message_g=train_g, pred_g=val_pred_g)
+                loss, rate_loss, reg_loss, link_loss = self.step(mode='evaluate', message_g=train_g, pred_g=val_pred_g)
                 self.metric.get_batch_metrics()
                 metric_str += f'Evaluate Epoch: {e}\n' \
                               f'Loss: {loss:.4f}\t' \
                               f'Rate Loss: {rate_loss:.4f}\t' \
-                              f'Reg Loss: {reg_loss:.4f}\n' 
+                              f'Reg Loss: {reg_loss:.4f}\t' \
+                              f'Link Loss: {link_loss:.4f}\n'
                 metric_str = self._generate_metric_str(metric_str)
             tqdm.write(self._log(metric_str))
 
@@ -183,12 +185,13 @@ class SVDPPTrainer(BaseTrainer):
         self._load_model(self.save_pth)
         self.metric.clear_metrics()
         # 在训练图上跑节点表示，在测试图上预测边的概率
-        loss, rate_loss, reg_loss= self.step(mode='evaluate', message_g=train_g, pred_g=test_pred_g)
+        loss, rate_loss, reg_loss, link_loss = self.step(mode='evaluate', message_g=train_g, pred_g=test_pred_g)
         self.metric.get_batch_metrics()
         metric_str =  f'Test Epoch: \n' \
                       f'Loss: {loss:.4f}\t' \
                       f'Rate Loss: {rate_loss:.4f}\t' \
-                      f'Reg Loss: {reg_loss:.4f}\n' 
+                      f'Reg Loss: {reg_loss:.4f}\t' \
+                      f'Link Loss: {link_loss:.4f}\n'
         metric_str = self._generate_metric_str(metric_str)
         tqdm.write(self._log(metric_str))
         tqdm.write("=" * 10 + "TRAIN END" + "=" * 10)
