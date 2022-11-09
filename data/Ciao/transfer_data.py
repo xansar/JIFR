@@ -33,7 +33,7 @@ def transfer_data():
     print('end transfer')
 
 
-def filter_data(threshold=100):
+def filter_data(threshold=100, rate_min=3):
     print('begin filter')
 
     rate_df = pd.read_csv('./behavior_data/rate.csv', delimiter=',')
@@ -45,11 +45,12 @@ def filter_data(threshold=100):
         flag_3 = (link_df_filter['user1'].value_counts() < threshold).sum()
         flag_4 = (~rate_df_filter.user.isin(link_df_filter.user1)).sum()
         flag_5 = (~link_df_filter.user1.isin(rate_df_filter.user)).sum()
+        flag_6 = (rate_df_filter.rate < rate_min).sum()
 
-        for i in range(1, 6):
+        for i in range(1, 7):
             print(eval(f'flag_{i}'), end='\t')
         print('')
-        return flag_1 > 1 or flag_2 > 1 or flag_3 > 1 or flag_4 > 1 or flag_5 > 1
+        return flag_1 > 1 or flag_2 > 1 or flag_3 > 1 or flag_4 > 1 or flag_5 > 1 or flag_6 > 1
 
     def single_process(rate_df_filter, link_df_filter):
         # 所有用户至少有四个邻居
@@ -58,6 +59,7 @@ def filter_data(threshold=100):
         # 将rate中user，item出现少于四次的过滤掉
         rate_df_filter = rate_df_filter[rate_df_filter.groupby('user').user.transform('count') >= threshold]
         rate_df_filter = rate_df_filter[rate_df_filter.groupby('item').item.transform('count') >= threshold]
+        rate_df_filter = rate_df_filter[rate_df_filter.rate >= rate_min]
 
         # 将在rate user表，不在link user表的过滤掉
         rate_df_filter = rate_df_filter[rate_df_filter.user.isin(link_df_filter.user1)]
@@ -171,5 +173,5 @@ def relabel():
 
 if __name__ == '__main__':
     transfer_data()
-    filter_data(threshold=2)
+    filter_data(threshold=2, rate_min=3)
     relabel()

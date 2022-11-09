@@ -12,12 +12,31 @@
 
 import torch
 import numpy as np
+import numba
+from numba.typed import List
 from tqdm import tqdm
 import os
+import json
+import dgl
 
 """
 BaseTrainer主要用来写一些通用的函数，比如打印config之类
 """
+
+@numba.njit()
+def neg_sampling(u_lst, pos_lst, neg_num, total_num):
+    lst = List()
+    lst.append(0)
+    lst.pop()
+    for u in u_lst:
+        history = pos_lst[u]
+        for _ in range(neg_num):
+            j = np.random.randint(total_num)
+            while j in history:
+                j = np.random.randint(total_num)
+            lst.append(j)
+    return lst
+
 class BaseTrainer:
     def __init__(self, config):
         self.task = config['TRAIN']['task']
@@ -38,6 +57,46 @@ class BaseTrainer:
         self.save_pth = os.path.join(save_dir, self.model_name, self.data_name, f'{self.task}_{self.random_seed}_{self.model_name}.pth')
         # 打印config
         self._print_config()
+
+        self.get_history_lst()
+
+    def get_history_lst(self):
+        with open(f'./data/{self.data_name}/splited_data/user2v.json', 'r', encoding='utf-8') as f:
+            user2v = json.load(f)
+
+        user2item = user2v['user2item']
+        user2trust = user2v['user2trust']
+        u_lst = []
+        item_lst = []
+        trust_lst = []
+        assert user2trust.keys() == user2item.keys()
+
+        if self.task == 'Rate' or self.task == 'Joint':
+            max_len = -1
+            for u, v in user2item.items():
+                u_lst.append(int(u))
+                item_lst.append(v)
+                if len(v) > max_len:
+                    max_len = len(v)
+            for i in range(len(item_lst)):
+                item_lst[i] = item_lst[i] + [-1 for _ in range(max_len - len(item_lst[i]))]
+            self.u_lst = np.array(u_lst, dtype=np.int32)
+            self.item_lst = np.array(item_lst, dtype=np.int32)
+
+        if self.task == 'Link' or self.task == 'Joint':
+            max_len = -1
+            for u, v in user2trust.items():
+                if self.task == 'Link':
+                    u_lst.append(int(u))
+                trust_lst.append(v)
+                if len(v) > max_len:
+                    max_len = len(v)
+            for i in range(len(trust_lst)):
+                trust_lst[i] = trust_lst[i] + [-1 for _ in range(max_len - len(trust_lst[i]))]
+            if self.task == 'Link':
+                self.u_lst = np.array(u_lst, dtype=np.int32)
+            self.trust_lst = np.array(item_lst, dtype=np.int32)
+
 
     def _print_config(self):
         # 用来打印config信息
@@ -93,6 +152,24 @@ class BaseTrainer:
         tqdm.write("Load Best Model!")
         state_dict = torch.load(save_pth)
         self.model.load_state_dict(state_dict, strict=strict)
+
+    def construct_negative_graph(self, graph, k, etype):
+        utype, _, vtype = etype
+        src, dst = graph.edges(etype=etype)
+        neg_src = src.repeat_interleave(k)
+        if vtype == utype:
+            neg_dst = neg_sampling(self.u_lst, self.trust_lst, k, self.total_user_num)
+        else:
+            neg_dst = neg_sampling(self.u_lst, self.item_lst, k, self.item_num)
+
+        neg_dst = torch.tensor(neg_dst, device=neg_src.device)
+        neg_dst = neg_dst.reshape(-1, k)[src].reshape(-1)
+
+        assert neg_dst.shape[0] == len(src) * k
+        # neg_dst = torch.randint(0, graph.num_nodes(vtype), (len(src) * k,), device=neg_src.device)
+        return dgl.heterograph(
+            {etype: (neg_src, neg_dst)},
+            num_nodes_dict={ntype: graph.num_nodes(ntype) for ntype in graph.ntypes})
 
     """
     下面的函数需要被overwrite
