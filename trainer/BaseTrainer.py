@@ -12,20 +12,25 @@
 
 import torch
 import numpy as np
-import numba
+
 from numba.typed import List
+from numba import njit
+from numba.types import ListType, int64, int32, Array
+
 from tqdm import tqdm
 import os
 import json
 import dgl
+import time
 
 """
 BaseTrainer主要用来写一些通用的函数，比如打印config之类
 """
 
-@numba.njit()
+# 使用numba加速负采样
+@njit(Array(int64, 1, 'C')(ListType(int64,), ListType(ListType(int64,),), int64, int64))
 def neg_sampling(u_lst, pos_lst, neg_num, total_num):
-    lst = List()
+    lst = []
     lst.append(0)
     lst.pop()
     for u in u_lst:
@@ -35,7 +40,7 @@ def neg_sampling(u_lst, pos_lst, neg_num, total_num):
             while j in history:
                 j = np.random.randint(total_num)
             lst.append(j)
-    return lst
+    return np.array(lst)
 
 class BaseTrainer:
     def __init__(self, config):
@@ -61,42 +66,28 @@ class BaseTrainer:
         self.get_history_lst()
 
     def get_history_lst(self):
+        # 获取用户历史行为列表
         with open(f'./data/{self.data_name}/splited_data/user2v.json', 'r', encoding='utf-8') as f:
             user2v = json.load(f)
 
         user2item = user2v['user2item']
         user2trust = user2v['user2trust']
-        u_lst = []
-        item_lst = []
-        trust_lst = []
+        self.u_lst = List()
+        self.item_lst = List()
+        self.trust_lst = List()
+
         assert user2trust.keys() == user2item.keys()
 
         if self.task == 'Rate' or self.task == 'Joint':
-            max_len = -1
             for u, v in user2item.items():
-                u_lst.append(int(u))
-                item_lst.append(v)
-                if len(v) > max_len:
-                    max_len = len(v)
-            for i in range(len(item_lst)):
-                item_lst[i] = item_lst[i] + [-1 for _ in range(max_len - len(item_lst[i]))]
-            self.u_lst = np.array(u_lst, dtype=np.int32)
-            self.item_lst = np.array(item_lst, dtype=np.int32)
+                self.u_lst.append(int(u))
+                self.item_lst.append(List(v))
 
         if self.task == 'Link' or self.task == 'Joint':
-            max_len = -1
             for u, v in user2trust.items():
                 if self.task == 'Link':
-                    u_lst.append(int(u))
-                trust_lst.append(v)
-                if len(v) > max_len:
-                    max_len = len(v)
-            for i in range(len(trust_lst)):
-                trust_lst[i] = trust_lst[i] + [-1 for _ in range(max_len - len(trust_lst[i]))]
-            if self.task == 'Link':
-                self.u_lst = np.array(u_lst, dtype=np.int32)
-            self.trust_lst = np.array(item_lst, dtype=np.int32)
-
+                    self.u_lst.append(int(u))
+                self.trust_lst.append(List(v))
 
     def _print_config(self):
         # 用来打印config信息
@@ -154,19 +145,17 @@ class BaseTrainer:
         self.model.load_state_dict(state_dict, strict=strict)
 
     def construct_negative_graph(self, graph, k, etype):
+        # 负采样，按用户进行
         utype, _, vtype = etype
         src, dst = graph.edges(etype=etype)
         neg_src = src.repeat_interleave(k)
-        if vtype == utype:
-            neg_dst = neg_sampling(self.u_lst, self.trust_lst, k, self.total_user_num)
-        else:
-            neg_dst = neg_sampling(self.u_lst, self.item_lst, k, self.item_num)
 
-        neg_dst = torch.tensor(neg_dst, device=neg_src.device)
-        neg_dst = neg_dst.reshape(-1, k)[src].reshape(-1)
+        history_lst = self.trust_lst if vtype == utype else self.item_lst
+        total_num = self.total_user_num if vtype == utype else self.item_num
 
-        assert neg_dst.shape[0] == len(src) * k
-        # neg_dst = torch.randint(0, graph.num_nodes(vtype), (len(src) * k,), device=neg_src.device)
+        neg_samples = torch.from_numpy(neg_sampling(self.u_lst, history_lst, k, total_num)).reshape(-1, k)
+        neg_dst = neg_samples[src].reshape(-1).to(self.device)
+
         return dgl.heterograph(
             {etype: (neg_src, neg_dst)},
             num_nodes_dict={ntype: graph.num_nodes(ntype) for ntype in graph.ntypes})
