@@ -85,15 +85,6 @@ class SocialMFTrainer(BaseTrainer):
 
         return train_g, val_pred_g, test_pred_g
 
-    def construct_negative_graph(self, graph, k, etype):
-        utype, _, vtype = etype
-        src, dst = graph.edges(etype=etype)
-        neg_src = src.repeat_interleave(k)
-        neg_dst = torch.randint(0, graph.num_nodes(vtype), (len(src) * k,), device=neg_src.device)
-        return dgl.heterograph(
-            {etype: (neg_src, neg_dst)},
-            num_nodes_dict={ntype: graph.num_nodes(ntype) for ntype in graph.ntypes})
-
     def step(self, mode='train', **inputs):
         # 模型单步计算
         if mode == 'train':
