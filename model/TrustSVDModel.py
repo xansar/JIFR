@@ -60,9 +60,7 @@ class TrustSVDModel(nn.Module):
             rel: dglnn.GraphConv(self.embedding_size, self.embedding_size, norm='left', weight=False, bias=False)
             for rel in rel_names
         })
-        self.u_bias = nn.Embedding(self.total_user_num, 1)
-        self.i_bias = nn.Embedding(self.item_num, 1)
-        self.global_bias = nn.Parameter(torch.tensor(global_bias), requires_grad=False)
+        self.global_bias = nn.Parameter(torch.tensor(global_bias), requires_grad=True)
         self.pred = HeteroDotProductPredictor()
 
         self.reg_loss = RegLoss(lamda=self.lamda, lamda_t=self.lamda_t)
@@ -77,6 +75,7 @@ class TrustSVDModel(nn.Module):
         normed_w = self.w_gcn(messege_g,
                               ({'user': y_w['user']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
         bias = self.bias(idx)
+
         res_embedding = {'user': normed_w['user'] + normed_y['user'] + p_q['user'], 'item': p_q['item']}
 
         pos_score = self.pred(pos_pred_g, 'rate', res_embedding, bias) + self.global_bias
@@ -100,7 +99,7 @@ class TrustSVDModel(nn.Module):
         return pos_score, neg_score, reg_loss, link_loss
 
 class RegLoss(nn.Module):
-    def __init__(self, lamda=0.5, lamda_t=0.45):
+    def __init__(self, lamda=0.5, lamda_t=0.25):
         super(RegLoss, self).__init__()
         self.lamda = lamda
         self.lamda_t = lamda_t
@@ -115,22 +114,22 @@ class RegLoss(nn.Module):
         p_q = params['p_q']
         y_w = params['y_w']
 
-        I_u_factor = graph.out_degrees(etype='rate')   # total_user_num
-        reg_b_u = torch.mean(self.lamda * I_u_factor * torch.norm(bias['user']))
+        I_u_factor = (1 / torch.sqrt(graph.out_degrees(etype='rate') + 1e-8)).clamp(max=1)   # total_user_num
+        reg_b_u = torch.mean(self.lamda * I_u_factor * torch.sum(torch.square(bias['user']), dim=1))
 
-        U_j_factor = graph.out_degrees(etype='rated-by')   # item_num
-        reg_b_j = torch.mean(self.lamda * U_j_factor * torch.norm(bias['item']))
+        U_j_factor = (1 / torch.sqrt(graph.out_degrees(etype='rated-by') + 1e-8)).clamp(max=1)   # item_num
+        reg_b_j = torch.mean(self.lamda * U_j_factor * torch.sum(torch.square(bias['item']), dim=1))
 
         ## in_degrees+trusted-by——表示当前用户相信的人的数量
-        T_u_factor = graph.in_degrees(etype='trusted-by')   # total_user_num
-        reg_p_u = torch.mean((self.lamda * I_u_factor + self.lamda_t * T_u_factor) * torch.norm(p_q['user']))
+        T_u_factor = (1 / torch.sqrt(graph.in_degrees(etype='trusted-by') + 1e-8)).clamp(max=1)   # total_user_num
+        reg_p_u = torch.mean((self.lamda * I_u_factor + self.lamda_t * T_u_factor) * torch.sum(torch.square(p_q['user']), dim=1))
 
-        reg_q_j = torch.mean(self.lamda * U_j_factor * torch.norm(p_q['item']))
+        reg_q_j = torch.mean(self.lamda * U_j_factor * torch.sum(torch.square(p_q['item']), dim=1))
 
-        reg_y_i = torch.mean(self.lamda * U_j_factor * torch.norm(y_w['item']))
+        reg_y_i = torch.mean(self.lamda * U_j_factor * torch.sum(torch.square(y_w['item']), dim=1))
 
         ## out_degrees+trusted-by——表示相信当前用户的人的数量
-        T_v_p_factor = graph.out_degrees(etype='trusted-by')   # total_user_num
-        reg_w_v = torch.mean(self.lamda_t * T_v_p_factor * torch.norm(y_w['user']))
+        T_v_p_factor = (1 / torch.sqrt(graph.out_degrees(etype='trusted-by') + 1e-8)).clamp(max=1)   # total_user_num
+        reg_w_v = torch.mean(self.lamda_t * T_v_p_factor * torch.sum(torch.square(y_w['user']), dim=1))
 
         return reg_b_u + reg_b_j + reg_p_u + reg_q_j + reg_y_i + reg_w_v, link_loss

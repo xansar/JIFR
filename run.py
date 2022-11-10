@@ -93,15 +93,15 @@ def run(config_pth):
     optimizer_name = 'torch.optim.' + config['OPTIM']['optimizer']
     optimizer = eval(optimizer_name)(lr=lr, params=model.parameters(), weight_decay=weight_decay)
     lr_scheduler_name = 'torch.optim.lr_scheduler.' + config['OPTIM']['lr_scheduler']
-    lr_adapt_step = eval(config['OPTIM']['lr_adapt_step'])
-    lr_scheduler = eval(lr_scheduler_name)(optimizer, lr_adapt_step)
+    T_0 = eval(config['OPTIM']['T_0'])  # 学习率第一次重启的epoch数
+    T_mult = eval(config['OPTIM']['T_mult'])    # 学习率衰减epoch数变化倍率
+    lr_scheduler = eval(lr_scheduler_name)(optimizer, T_0=T_0, T_mult=T_mult, verbose=True)
     # loss func
     loss_name = config['LOSS']['loss_name']
     loss_func = eval(loss_name)(reduction='mean')
     # metric
-    ks = eval(config['METRIC']['ks'])
-    metric_name = eval(config['METRIC']['metric_name'])
-    metric = BaseMetric(ks=ks, task=task, metric_name=metric_name)
+
+    metric = BaseMetric(config)
     # trainer
     trainer = eval(model_name + 'Trainer')(
         model=model,

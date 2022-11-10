@@ -17,7 +17,7 @@ import numpy as np
 from tqdm import tqdm, trange
 import os
 
-from .BaseTrainer import BaseTrainer
+from .BaseTrainer import BaseTrainer, neg_sampling
 
 class GraphRecTrainer(BaseTrainer):
     def __init__(
@@ -88,6 +88,28 @@ class GraphRecTrainer(BaseTrainer):
 
         return train_g, val_pred_g, test_pred_g
 
+    def construct_negative_graph(self, graph, k, etype, mode='train'):
+        if mode == 'train':
+            return super(GraphRecTrainer, self).construct_negative_graph(graph, k, etype)
+        else:
+            # 负采样，按用户进行
+            utype, _, vtype = etype
+            src, dst = graph.edges(etype=etype)
+            # neg_src = src.repeat_interleave(k)
+
+
+            history_lst = self.trust_lst if vtype == utype else self.item_lst
+            total_num = self.total_user_num if vtype == utype else self.item_num
+
+            neg_src = torch.tensor(self.u_lst, device=self.device, dtype=torch.long).repeat_interleave(k)
+            neg_samples = torch.from_numpy(neg_sampling(self.u_lst, history_lst, k, total_num)).reshape(-1, k)
+            # 这里直接对用户-负样本进行预测
+            neg_dst = neg_samples.reshape(-1).to(self.device)
+
+            return dgl.heterograph(
+                {etype: (neg_src, neg_dst)},
+                num_nodes_dict={ntype: graph.num_nodes(ntype) for ntype in graph.ntypes})
+
     def step(self, mode='train', **inputs):
         # 模型单步计算
         if mode == 'train':
@@ -108,16 +130,19 @@ class GraphRecTrainer(BaseTrainer):
             return loss.item()
         elif mode == 'evaluate':
             with torch.no_grad():
+                self.model.eval()
                 message_g = inputs['message_g']
                 pred_g = inputs['pred_g']
-                neg_g = self.construct_negative_graph(pred_g, self.neg_num, etype=('user', 'rate', 'item'))
-                self.model.eval()
+                neg_g = self.construct_negative_graph(pred_g, self.neg_num, etype=('user', 'rate', 'item'), mode=mode)
                 pos_pred, neg_pred = self.model(
                     message_g,
                     pred_g,
                     neg_g
                 )
+                # 由于graphrec mlp多，会爆显存，办法是先对用户-负样本对做前向，然后再切分计算loss
                 neg_pred = neg_pred.reshape(-1, self.neg_num)
+                src, _ = pred_g.edges(etype='rate')
+                neg_pred = neg_pred[src]
                 loss = self.loss_func(pos_pred, neg_pred)
                 self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu(), task=self.task)
                 return loss.item()
@@ -160,7 +185,6 @@ class GraphRecTrainer(BaseTrainer):
                               f'Loss: {loss:.4f}\n'
                 metric_str = self._generate_metric_str(metric_str)
             tqdm.write(self._log(metric_str))
-
             # 保存最好模型
             if self.metric.is_save:
                 self._save_model(self.save_pth)

@@ -11,3 +11,5 @@ __pycache__
 *.pth
 */*/splited_data
 */*/raw_data
+*/*/link_data.csv
+*/*/rate_data.csv

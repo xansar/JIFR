@@ -14,17 +14,26 @@ import torch
 
 
 class BaseMetric:
-    def __init__(self, ks, task, metric_name):
+    def __init__(self, config):
+        self.config = config
         self.is_early_stop = False
+        self.early_stop_num = eval(config['OPTIM']['early_stop_num'])
+        self.early_stop_cnt = 0
+        self.metric_cnt = 0
+        self.eval_step = eval(config['TRAIN']['eval_step'])
+        self.warm_epoch = eval(config['TRAIN']['warm_epoch'])
+        self.early_stop_last = -1
+
         self.is_save = False
         self.metric_dict = {}
+        task = config['TRAIN']['task']
         if task == 'Joint':
             self.task_lst = ['Rate', 'Link']
         else:
             self.task_lst = [task]
 
-        self.metric_name = metric_name
-        self.ks = ks
+        metric_name = eval(config['METRIC']['metric_name'])
+        self.ks = eval(config['METRIC']['ks'])
         self.init_metrics(metric_name)
 
     def init_metrics(self, metric_name):
@@ -61,12 +70,18 @@ class BaseMetric:
                     self.metric_dict[t][m][k]['cnt'] = -1
                     if self.metric_dict[t][m][k]['value'] > self.metric_dict[t][m][k]['best']:
                         self.metric_dict[t][m][k]['best'] = self.metric_dict[t][m][k]['value']
-                        if k == self.ks[-1] and t == 'Rate':
+                        if k == self.ks[-1] and t == 'Rate' and m == 'HR':
                             self.is_save = True
-                    elif k == self.ks[-1] \
-                            and self.metric_dict[t][m][k]['value'] < self.metric_dict[t][m][k]['best'] \
-                            and t == 'Rate':
-                        self.is_early_stop = True
+                    elif k == self.ks[-1] and t == 'Rate' and m == 'HR':
+                        self.metric_cnt += 1
+                        if self.metric_dict[t][m][k]['value'] < self.early_stop_last and self.metric_cnt * self.eval_step > self.warm_epoch:
+                            self.early_stop_cnt += 1
+                            if self.early_stop_cnt > self.early_stop_num:
+                                self.is_early_stop = True
+                        elif self.metric_dict[t][m][k]['value'] >= self.early_stop_last:
+                            self.early_stop_cnt = 0
+                        self.early_stop_last = self.metric_dict[t][m][k]['value']
+
 
     def print_best_metrics(self):
         metric_str = ''
