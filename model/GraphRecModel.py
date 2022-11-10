@@ -255,7 +255,7 @@ class GraphRecModel(nn.Module):
         self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.rating_num = eval(config['MODEL']['rating_num'])
         self.drop_rate = eval(config['MODEL']['drop_rate'])
-
+        self.neg_num = eval(config['DATA']['neg_num'])
         self.embedding = dglnn.HeteroEmbedding({
             'user': self.total_user_num,
             'item': self.item_num,
@@ -269,7 +269,7 @@ class GraphRecModel(nn.Module):
                 self.num_heads,
                 e_feats=self.embedding_size,
                 feat_drop=self.drop_rate,
-                attn_drop=self.drop_rate
+                attn_drop=self.drop_rate,
             )
             if 'rate' in rel else
             GraphRecGAT(
@@ -277,7 +277,7 @@ class GraphRecModel(nn.Module):
                 self.embedding_size,
                 self.num_heads,
                 feat_drop=self.drop_rate,
-                attn_drop=self.drop_rate
+                attn_drop=self.drop_rate,
             )
             for rel in rel_names
         })
@@ -289,44 +289,42 @@ class GraphRecModel(nn.Module):
         idx = {ntype: message_g.nodes(ntype) for ntype in message_g.ntypes}
         idx.update({'rating': torch.arange(6, device=idx['user'].device)})
         embedding = self.embedding(idx)
+
         # 这里rate和rated-by上rating序号是相同的
         assert (message_g.edges['rate'].data['rating'] != message_g.edges['rated-by'].data['rating']).sum()==0
-
         edge_embedding = embedding['rating'][message_g.edges['rate'].data['rating']]
+
         # user modeling
         ## item aggregation
-        src = {'item': embedding['item']}
-        dst = {'user': embedding['user']}
         item_space = self.user_social_item_aggregation(
             message_g,
-            (src, dst),
+            ({'item': embedding['item']}, {'user': embedding['user']}),
             mod_kwargs={'rated-by': {'e_feat': edge_embedding}}
         )['user'].squeeze(1)
         assert item_space.shape == (self.total_user_num, self.embedding_size)
+
         ## social aggregation
-        src = {'user': item_space}
-        dst = {'user': embedding['user']}
         social_space = self.user_social_item_aggregation(
             message_g,
-            (src, dst)
+            ({'user': item_space}, {'user': embedding['user']})
         )['user'].squeeze(1)
         assert social_space.shape == (self.total_user_num, self.embedding_size)
+
         ## concation and mlp
         user_latent_factor = self.user_latent_factor_mlp(item_space, social_space)
         assert user_latent_factor.shape == (self.total_user_num, self.embedding_size)
 
         # item modeling
-        src = {'user': embedding['user']}
-        dst = {'item': embedding['item']}
         item_latent_factor = self.user_social_item_aggregation(
             message_g,
-            (src, dst),
+            ({'user': embedding['user']}, {'item': embedding['item']}),
             mod_kwargs={'rate': {'e_feat': edge_embedding}}
         )['item'].squeeze(1)
         assert item_latent_factor.shape == (self.item_num, self.embedding_size)
+
         # prediction
-        res_embedding = {'user': user_latent_factor, 'item': item_latent_factor}
-        pos_score = self.pred(pos_pred_g, res_embedding, 'rate')
-        neg_score = self.pred(neg_pred_g, res_embedding, 'rate')
+        pos_score = self.pred(pos_pred_g, {'user': user_latent_factor, 'item': item_latent_factor}, 'rate')
+        neg_score = self.pred(neg_pred_g, {'user': user_latent_factor, 'item': item_latent_factor}, 'rate')
+
         assert pos_score.shape[1] == 1
         return pos_score, neg_score
