@@ -222,6 +222,8 @@ class BaseTrainer:
                 self.metric.get_batch_metrics()
                 metric_str = f'Evaluate Epoch: {e}\n'
                 for j in range(len(loss_name)):
+                    if len(loss_name) == 1:
+                        loss_lst = [loss_lst]
                     metric_str += f'{loss_name[j]}: {loss_lst[j]:.4f}\t'
                 metric_str += '\n'
                 metric_str = self._generate_metric_str(metric_str)
@@ -249,6 +251,8 @@ class BaseTrainer:
         self.metric.get_batch_metrics()
         metric_str = f'Test Epoch: \n'
         for j in range(len(loss_name)):
+            if len(loss_name) == 1:
+                loss_lst = [loss_lst]
             metric_str += f'{loss_name[j]}: {loss_lst[j]:.4f}\t'
         metric_str += '\n'
         metric_str = self._generate_metric_str(metric_str)
