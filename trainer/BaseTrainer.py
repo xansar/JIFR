@@ -63,6 +63,7 @@ class BaseTrainer:
         # 打印config
         self._print_config()
 
+        self.step_per_epoch = eval(self.config['TRAIN']['step_per_epoch'])
         self.get_history_lst()
 
     def get_history_lst(self):
@@ -187,46 +188,67 @@ class BaseTrainer:
         else:
             raise ValueError("Wrong Mode")
 
-    def train(self):
+    def _train(self, loss_name):
         # 整体训练流程
         tqdm.write(self._log("=" * 10 + "TRAIN BEGIN" + "=" * 10))
         epoch = eval(self.config['TRAIN']['epoch'])
-
+        # 从左到右：训练图，用于验证的图，用于测试的图
+        train_g, val_pred_g, test_pred_g = self.get_graphs()
+        train_g = train_g.to(self.device)
+        val_pred_g = val_pred_g.to(self.device)
+        test_pred_g = test_pred_g.to(self.device)
         for e in range(1, epoch + 1):
-            all_loss = 0.0
             """
-            write codes for train a epoch
+            write codes for train
+            and return loss
             """
-            metric_str = f'Train Epoch: {e}\nLoss: {all_loss:.4f}\n'
+            all_loss_lst = [0.0 for _ in range(len(loss_name))]
+            for _ in trange(self.step_per_epoch):
+                loss_lst = self.step(mode='train', train_pos_g=train_g)
+                for j in range(len(loss_name)):
+                    all_loss_lst[j] += loss_lst[j]
+            metric_str = f'Train Epoch: {e}\n'
+            for j in range(len(loss_name)):
+                all_loss_lst[j] /= self.step_per_epoch
+                metric_str += f'{loss_name[j]}: {all_loss_lst[j]:.4f}\t'
+            tqdm.write(self._log(metric_str))
 
             if e % self.eval_step == 0:
+                # 在训练图上跑节点表示，在验证图上预测边的概率
                 self.metric.clear_metrics()
-                all_loss = 0.0
-                """
-                write codes for evaluate a epoch
-                """
+                loss_lst = self.step(mode='evaluate', message_g=train_g, pred_g=val_pred_g)
                 self.metric.get_batch_metrics()
-                metric_str += f'Evaluate Epoch: {e}\n'
-                metric_str += f'loss: {all_loss:.4f}\n'
+                metric_str = f'Evaluate Epoch: {e}\n'
+                for j in range(len(loss_name)):
+                    metric_str += f'{loss_name[j]}: {loss_lst[j]:.4f}\t'
+                metric_str += '\n'
                 metric_str = self._generate_metric_str(metric_str)
+                tqdm.write(self._log(metric_str))
 
-            tqdm.write(self._log(metric_str))
-            if self.metric.is_early_stop and e >= self.warm_epoch:
-                tqdm.write(self._log("Early Stop!"))
-                break
-            else:
-                self.metric.is_early_stop = False
+                # 保存最好模型
+                if self.metric.is_save:
+                    self._save_model(self.save_pth)
+                    self.metric.is_save = False
+                # 是否早停
+                if self.metric.is_early_stop and e >= self.warm_epoch:
+                    tqdm.write(self._log("Early Stop!"))
+                    break
+                else:
+                    self.metric.is_early_stop = False
+            self.lr_scheduler.step()
         tqdm.write(self._log(self.metric.print_best_metrics()))
 
+        # 开始测试
+        # 加载最优模型
+        self._load_model(self.save_pth)
         self.metric.clear_metrics()
-        all_loss = 0.0
-        """
-        write codes for test a epoch
-        """
+        # 在训练图上跑节点表示，在测试图上预测边的概率
+        loss_lst = self.step(mode='evaluate', message_g=train_g, pred_g=test_pred_g)
         self.metric.get_batch_metrics()
         metric_str = f'Test Epoch: \n'
-        metric_str += f'loss: {all_loss:.4f}\n'
+        for j in range(len(loss_name)):
+            metric_str += f'{loss_name[j]}: {loss_lst[j]:.4f}\t'
+        metric_str += '\n'
         metric_str = self._generate_metric_str(metric_str)
         tqdm.write(self._log(metric_str))
-
         tqdm.write("=" * 10 + "TRAIN END" + "=" * 10)
