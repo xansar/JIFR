@@ -17,7 +17,7 @@ from numba.typed import List
 from numba import njit
 from numba.types import ListType, int64, int32, Array
 
-from tqdm import tqdm
+from tqdm import tqdm, trange
 import os
 import json
 import dgl
@@ -206,6 +206,8 @@ class BaseTrainer:
             for _ in trange(self.step_per_epoch):
                 loss_lst = self.step(mode='train', train_pos_g=train_g)
                 for j in range(len(loss_name)):
+                    if len(loss_name) == 1:
+                        loss_lst = [loss_lst]
                     all_loss_lst[j] += loss_lst[j]
             metric_str = f'Train Epoch: {e}\n'
             for j in range(len(loss_name)):
