@@ -189,6 +189,7 @@ class BaseTrainer:
             raise ValueError("Wrong Mode")
 
     def _train(self, loss_name):
+        bar_range = trange if self.step_per_epoch > 10 else lambda x: range(x)
         # 整体训练流程
         tqdm.write(self._log("=" * 10 + "TRAIN BEGIN" + "=" * 10))
         epoch = eval(self.config['TRAIN']['epoch'])
@@ -203,7 +204,7 @@ class BaseTrainer:
             and return loss
             """
             all_loss_lst = [0.0 for _ in range(len(loss_name))]
-            for _ in trange(self.step_per_epoch):
+            for _ in bar_range(self.step_per_epoch):
                 loss_lst = self.step(mode='train', train_pos_g=train_g)
                 for j in range(len(loss_name)):
                     if len(loss_name) == 1:
