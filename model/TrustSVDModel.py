@@ -53,11 +53,11 @@ class TrustSVDModel(nn.Module):
             {'user': self.total_user_num, 'item': self.item_num}, 1
         )
         self.y_gcn = dglnn.HeteroGraphConv({
-            rel: dglnn.GraphConv(self.embedding_size, self.embedding_size, norm='left', weight=False, bias=False)
+            rel: dglnn.GraphConv(self.embedding_size, self.embedding_size, norm='none', weight=False, bias=False)
             for rel in rel_names
         })
         self.w_gcn = dglnn.HeteroGraphConv({
-            rel: dglnn.GraphConv(self.embedding_size, self.embedding_size, norm='left', weight=False, bias=False)
+            rel: dglnn.GraphConv(self.embedding_size, self.embedding_size, norm='none', weight=False, bias=False)
             for rel in rel_names
         })
         self.global_bias = nn.Parameter(torch.tensor(global_bias), requires_grad=True)
@@ -70,13 +70,21 @@ class TrustSVDModel(nn.Module):
         idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
         y_w = self.y_w_embedding(idx)  # {'user': w, 'item': y}
         p_q = self.p_q_embedding(idx)  # {'user': p, 'item': q}
-        normed_y = self.y_gcn(messege_g,
-                              ({'item': y_w['item']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
-        normed_w = self.w_gcn(messege_g,
-                              ({'user': y_w['user']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
-        bias = self.bias(idx)
+        I_u_mask = (messege_g.out_degrees(etype='rate') > 0).float()
+        I_u_factor = (I_u_mask / torch.sqrt(messege_g.out_degrees(etype='rate').clamp(min=1))).reshape(-1, 1)
+        normed_y = I_u_factor * self.y_gcn(messege_g,
+                              ({'item': y_w['item']}, {'user': p_q['user']}))['user']  # 'user': total_user_num * embedsize
 
-        res_embedding = {'user': normed_w['user'] + normed_y['user'] + p_q['user'], 'item': p_q['item']}
+        T_u_mask = (messege_g.in_degrees(etype='trusted-by') > 0).float()
+        T_u_factor = (T_u_mask / torch.sqrt(messege_g.in_degrees(etype='trusted-by').clamp(min=1))).reshape(-1, 1)
+        normed_w = T_u_factor * self.w_gcn(messege_g,
+                                  ({'user': y_w['user']}, {'user': p_q['user']}))['user']  # 'user': total_user_num * embedsize
+
+        bias = self.bias(idx)
+        res_embedding = {
+            'user': normed_w + normed_y + p_q['user'],
+            'item': p_q['item']
+        }
 
         pos_score = self.pred(pos_pred_g, 'rate', res_embedding, bias) + self.global_bias
         neg_score = self.pred(neg_pred_g, 'rate', res_embedding, bias) + self.global_bias
@@ -93,7 +101,9 @@ class TrustSVDModel(nn.Module):
         params = {
             'bias': bias,
             'y_w': y_w,
-            'p_q': p_q
+            'p_q': p_q,
+            'I_u_factor': I_u_factor,
+            'T_u_factor':T_u_factor
         }
         reg_loss, link_loss = self.reg_loss(messege_g, params, link_pred)
         return pos_score, neg_score, reg_loss, link_loss
@@ -113,15 +123,15 @@ class RegLoss(nn.Module):
         bias = params['bias']
         p_q = params['p_q']
         y_w = params['y_w']
+        I_u_factor = params['I_u_factor'].reshape(-1)
+        T_u_factor = params['T_u_factor'].reshape(-1)
 
-        I_u_factor = (1 / torch.sqrt(graph.out_degrees(etype='rate') + 1e-8)).clamp(max=1)   # total_user_num
         reg_b_u = torch.mean(self.lamda * I_u_factor * torch.sum(torch.square(bias['user']), dim=1))
 
-        U_j_factor = (1 / torch.sqrt(graph.out_degrees(etype='rated-by') + 1e-8)).clamp(max=1)   # item_num
+        U_j_mask = (graph.out_degrees(etype='rated-by') > 0).float()
+        U_j_factor = U_j_mask / torch.sqrt(graph.out_degrees(etype='rated-by').clamp(min=1))   # item_num
         reg_b_j = torch.mean(self.lamda * U_j_factor * torch.sum(torch.square(bias['item']), dim=1))
 
-        ## in_degrees+trusted-by——表示当前用户相信的人的数量
-        T_u_factor = (1 / torch.sqrt(graph.in_degrees(etype='trusted-by') + 1e-8)).clamp(max=1)   # total_user_num
         reg_p_u = torch.mean((self.lamda * I_u_factor + self.lamda_t * T_u_factor) * torch.sum(torch.square(p_q['user']), dim=1))
 
         reg_q_j = torch.mean(self.lamda * U_j_factor * torch.sum(torch.square(p_q['item']), dim=1))
@@ -129,7 +139,8 @@ class RegLoss(nn.Module):
         reg_y_i = torch.mean(self.lamda * U_j_factor * torch.sum(torch.square(y_w['item']), dim=1))
 
         ## out_degrees+trusted-by——表示相信当前用户的人的数量
-        T_v_p_factor = (1 / torch.sqrt(graph.out_degrees(etype='trusted-by') + 1e-8)).clamp(max=1)   # total_user_num
+        T_v_p_mask = (graph.out_degrees(etype='trusted-by') > 0).float()
+        T_v_p_factor = T_v_p_mask / torch.sqrt(graph.out_degrees(etype='trusted-by').clamp(min=1))   # total_user_num
         reg_w_v = torch.mean(self.lamda_t * T_v_p_factor * torch.sum(torch.square(y_w['user']), dim=1))
 
         return reg_b_u + reg_b_j + reg_p_u + reg_q_j + reg_y_i + reg_w_v, link_loss
