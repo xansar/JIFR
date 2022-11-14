@@ -42,11 +42,12 @@ def filter_data(threshold=100, rate_min=3):
         flag_4 = (~rate_df_filter.user.isin(link_df_filter.user1)).sum()
         flag_5 = (~link_df_filter.user1.isin(rate_df_filter.user)).sum()
         flag_6 = (rate_df_filter.rate < rate_min).sum()
+        flag_7 = (~link_df_filter.user2.isin(link_df_filter.user1)).sum()
 
-        for i in range(1, 7):
+        for i in range(1, 8):
             print(eval(f'flag_{i}'), end='\t')
         print('')
-        return flag_1 > 1 or flag_2 > 1 or flag_3 > 1 or flag_4 > 1 or flag_5 > 1 or flag_6 > 1
+        return flag_1 > 1 or flag_2 > 1 or flag_3 > 1 or flag_4 > 1 or flag_5 > 1 or flag_6 > 1 or flag_7 > 1
 
     def single_process(rate_df_filter, link_df_filter):
         # 所有用户至少有四个邻居
@@ -61,6 +62,7 @@ def filter_data(threshold=100, rate_min=3):
 
         # 将在link user表，不在rating user表的过滤掉
         link_df_filter = link_df_filter[link_df_filter.user1.isin(rate_df_filter.user)]
+        link_df_filter = link_df_filter[link_df_filter.user2.isin(link_df_filter.user1)]
 
         return rate_df_filter, link_df_filter
 
