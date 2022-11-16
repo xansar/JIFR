@@ -57,12 +57,22 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run Model.")
     parser.add_argument('--config_pth', type=str, default='MF.ini',
                         help='Choose config')
+    parser.add_argument('--tensorboard', type=bool, default=True,
+                        help='whether to visulize train logs with tensorboard')
     return parser.parse_args()
 
 
-def run(config_pth):
+def run(config_pth, is_visulized):
     config = get_config(config_pth)
+    if is_visulized:
+        config.update({'VISUALIZED': True})
+
     seed = eval(config['TRAIN']['random_seed'])
+
+    # # 随机抽seed
+    # seed = random.randint(0, 145161)
+    # config['TRAIN']['random_seed'] = str(seed)
+
     setup_seed(seed)
     data_name = config['DATA']['data_name']
     model_name = config['MODEL']['model_name']
@@ -88,10 +98,25 @@ def run(config_pth):
     # model.apply(weight_init)
 
     # optimizer
-    lr = eval(config['OPTIM']['learning_rate'])
-    weight_decay = eval(config['OPTIM']['weight_decay'])
     optimizer_name = 'torch.optim.' + config['OPTIM']['optimizer']
-    optimizer = eval(optimizer_name)(lr=lr, params=model.parameters(), weight_decay=weight_decay)
+    if 'embedding_weight_decay' in config['OPTIM'].keys():
+        optimizer_grouped_params = [
+            {'params': [p for n, p in model.named_parameters() if 'embeds' in n],
+             'lr': eval(config['OPTIM']['embedding_learning_rate']),
+             'weight_decay': eval(config['OPTIM']['embedding_weight_decay'])
+             },
+            {'params': [p for n, p in model.named_parameters() if 'embeds' not in n],
+             'lr': eval(config['OPTIM']['learning_rate']),
+             'weight_decay': eval(config['OPTIM']['weight_decay'])
+             }
+        ]
+        optimizer = eval(optimizer_name)(params=optimizer_grouped_params)
+    else:
+        lr = eval(config['OPTIM']['learning_rate'])
+        weight_decay = eval(config['OPTIM']['weight_decay'])
+        optimizer = eval(optimizer_name)(lr=lr, params=model.parameters(), weight_decay=weight_decay)
+
+
     lr_scheduler_name = 'torch.optim.lr_scheduler.' + config['OPTIM']['lr_scheduler']
     T_0 = eval(config['OPTIM']['T_0'])  # 学习率第一次重启的epoch数
     T_mult = eval(config['OPTIM']['T_mult'])    # 学习率衰减epoch数变化倍率
@@ -116,5 +141,11 @@ def run(config_pth):
 
 
 if __name__ == '__main__':
+    # model_name = ['CiaoGraphRec']
+    # for n in model_name:
+    #     config_pth = n + '.ini'
+    #     for i in range(3):
+    #         run(config_pth)
     args = parse_args()
-    run(args.config_pth)
+
+    run(args.config_pth, args.tensorboard)

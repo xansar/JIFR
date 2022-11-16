@@ -35,7 +35,18 @@ def split_data(train_ratio=0.75, val_ratio=0.05, test_ratio=0.2, raw_pth='../Ext
         np.random.shuffle(lst)
         lst_len = len(lst)
         train_size = int(train_ratio * lst_len)
-        val_size = int(val_ratio * lst_len)
+        res_val_ratio = val_ratio / (val_ratio + test_ratio)
+        val_size = int(res_val_ratio * (lst_len - train_size))
+
+        # 确保在test有盈余的情况下，val至少有一个
+        test_size = lst_len - train_size - val_size
+        if val_size == 0:
+            if test_size > 1:
+                val_size += 1
+            elif test_size == 1:
+                if np.random.rand(1) >= 0.5:
+                    val_size += 1
+
         train_lst = lst[:train_size]
         val_lst = lst[train_size: train_size + val_size]
         test_lst = lst[train_size + val_size:]
@@ -64,7 +75,7 @@ def split_data(train_ratio=0.75, val_ratio=0.05, test_ratio=0.2, raw_pth='../Ext
         json.dump({'user2item': user2item, 'user2trust':user2trust}, f, indent=2)
 
 if __name__ == '__main__':
-    split_data(0.8, 0.1, 0.1, raw_pth='../Epinions')
+    split_data(0.8, 0.1, 0.1, raw_pth='../Ciao')
 
 
 

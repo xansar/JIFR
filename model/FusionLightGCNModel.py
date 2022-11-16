@@ -92,8 +92,7 @@ class FusionLightGCNModel(nn.Module):
             social_embedding['user'] = social_embedding['user'] + embeddings['user'] * (1 / (i + 2))
 
         res_embedding = {
-            'user': self.user_mlp(torch.cat([pref_embedding['user'], social_embedding['user']], dim=1)) +
-                    pref_embedding['user'] + social_embedding['user'],
+            'user': pref_embedding['user'] + social_embedding['user'],
             'item': pref_embedding['item']
         }
         pos_score = self.pred(pos_pred_g, res_embedding, 'rate')

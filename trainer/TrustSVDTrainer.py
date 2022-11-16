@@ -99,7 +99,8 @@ class TrustSVDTrainer(BaseTrainer):
             )
             neg_pred = neg_pred.reshape(-1, self.train_neg_num)
             rate_loss = self.loss_func(pos_pred, neg_pred)
-            loss = rate_loss + reg_loss + link_loss
+            # loss = rate_loss + reg_loss + link_loss
+            loss = rate_loss + link_loss
             loss.backward()
             self.optimizer.step()
             return loss.item(), rate_loss.item(), reg_loss.item(), link_loss.item()
@@ -116,7 +117,8 @@ class TrustSVDTrainer(BaseTrainer):
                 )
                 neg_pred = neg_pred.reshape(-1, self.neg_num)
                 rate_loss = self.loss_func(pos_pred, neg_pred)
-                loss = rate_loss + reg_loss + link_loss
+                # loss = rate_loss + reg_loss + link_loss
+                loss = rate_loss + link_loss
                 self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu(), task=self.task)
                 return loss.item(), rate_loss.item(), reg_loss.item(), link_loss.item()
         else:

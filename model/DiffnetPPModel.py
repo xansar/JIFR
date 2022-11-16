@@ -32,26 +32,33 @@ class DiffusionLayer(nn.Module):
         self.num_heads = num_heads
         super(DiffusionLayer, self).__init__()
         self.interest_diffusion_layer = dglnn.HeteroGraphConv({
-            rel: dglnn.GATv2Conv(self.embedding_size, self.embedding_size, num_heads=self.num_heads)
+            rel: dglnn.GATv2Conv(self.embedding_size, self.embedding_size, num_heads=self.num_heads, attn_drop=0.5, feat_drop=0.5)
             for rel in rel_names
         })
 
         self.influence_diffusion_layer = dglnn.HeteroGraphConv({
-            rel: dglnn.GATv2Conv(self.embedding_size, self.embedding_size, num_heads=self.num_heads)
+            rel: dglnn.GATv2Conv(self.embedding_size, self.embedding_size, num_heads=self.num_heads, attn_drop=0.5, feat_drop=0.5)
             for rel in rel_names
         })
         self.att_score_influence = nn.Sequential(
-            nn.Linear(2 * self.embedding_size, 2 * self.embedding_size),
-            nn.Linear(2 * self.embedding_size, 1),
-            nn.BatchNorm1d(1),
+            nn.Linear(2 * self.embedding_size, self.embedding_size),
+            # nn.BatchNorm1d(self.embedding_size),
+            nn.Linear(self.embedding_size, 1),
+            # nn.BatchNorm1d(1),
             nn.LeakyReLU()
         )
         self.att_score_interest = nn.Sequential(
-            nn.Linear(2 * self.embedding_size, 2 * self.embedding_size),
-            nn.Linear(2 * self.embedding_size, 1),
-            nn.BatchNorm1d(1),
+            nn.Linear(2 * self.embedding_size, self.embedding_size),
+            # nn.BatchNorm1d(self.embedding_size),
+            nn.Linear(self.embedding_size, 1),
+            # nn.BatchNorm1d(1),
             nn.LeakyReLU()
         )
+        #
+        # self.output_bn = nn.ModuleDict({
+        #     'user': nn.BatchNorm1d(self.embedding_size),
+        #     'item': nn.BatchNorm1d(self.embedding_size),
+        # })
 
     def forward(self, g, embedding):
         # item
@@ -76,6 +83,8 @@ class DiffusionLayer(nn.Module):
         return {
             'user': user_embedding,
             'item': item_embedding
+            # 'user': self.output_bn['user'](user_embedding),
+            # 'item': self.output_bn['item'](item_embedding)
         }
 
 class ActivatedHeteroLinear(nn.Module):
@@ -159,7 +168,6 @@ class DiffnetPPModel(nn.Module):
         idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
         # res_embedding = self.fusion_layer(self.embedding(idx))
         res_embedding = self.embedding(idx)
-
         for i, layer in enumerate(self.diffusion_layers):
             if i == 0:
                 embeddings = layer(messege_g, res_embedding)
