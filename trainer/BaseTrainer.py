@@ -188,16 +188,21 @@ class BaseTrainer:
         else:
             raise ValueError("Wrong Mode")
 
-    def _train(self, loss_name):
+    def get_side_info(self):
+        return None
+
+    def _train(self, loss_name, side_info: dict=None):
         bar_range = trange if self.step_per_epoch > 10 else lambda x: range(x)
         # 整体训练流程
         tqdm.write(self._log("=" * 10 + "TRAIN BEGIN" + "=" * 10))
         epoch = eval(self.config['TRAIN']['epoch'])
         # 从左到右：训练图，用于验证的图，用于测试的图
         train_g, val_pred_g, test_pred_g = self.get_graphs()
-        train_g = train_g.to(self.device)
-        val_pred_g = val_pred_g.to(self.device)
-        test_pred_g = test_pred_g.to(self.device)
+        self.train_g = train_g.to(self.device)
+        self.val_pred_g = val_pred_g.to(self.device)
+        self.test_pred_g = test_pred_g.to(self.device)
+
+        side_info = self.get_side_info()
         for e in range(1, epoch + 1):
             """
             write codes for train
@@ -205,7 +210,7 @@ class BaseTrainer:
             """
             all_loss_lst = [0.0 for _ in range(len(loss_name))]
             for _ in bar_range(self.step_per_epoch):
-                loss_lst = self.step(mode='train', train_pos_g=train_g)
+                loss_lst = self.step(mode='train', train_pos_g=self.train_g, side_info=side_info)
                 for j in range(len(loss_name)):
                     if len(loss_name) == 1:
                         loss_lst = [loss_lst]
@@ -219,7 +224,7 @@ class BaseTrainer:
             if e % self.eval_step == 0:
                 # 在训练图上跑节点表示，在验证图上预测边的概率
                 self.metric.clear_metrics()
-                loss_lst = self.step(mode='evaluate', message_g=train_g, pred_g=val_pred_g)
+                loss_lst = self.step(mode='evaluate', message_g=self.train_g, pred_g=self.val_pred_g, side_info=side_info)
                 self.metric.get_batch_metrics()
                 metric_str = f'Evaluate Epoch: {e}\n'
                 for j in range(len(loss_name)):
@@ -248,7 +253,7 @@ class BaseTrainer:
         self._load_model(self.save_pth)
         self.metric.clear_metrics()
         # 在训练图上跑节点表示，在测试图上预测边的概率
-        loss_lst = self.step(mode='evaluate', message_g=train_g, pred_g=test_pred_g)
+        loss_lst = self.step(mode='evaluate', message_g=self.train_g, pred_g=self.test_pred_g, side_info=side_info)
         self.metric.get_batch_metrics()
         metric_str = f'Test Epoch: \n'
         for j in range(len(loss_name)):
