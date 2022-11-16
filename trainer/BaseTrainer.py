@@ -11,6 +11,7 @@
 
 
 import torch
+from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
 from numba.typed import List
@@ -66,6 +67,16 @@ class BaseTrainer:
         self.step_per_epoch = eval(self.config['TRAIN']['step_per_epoch'])
         self.get_history_lst()
 
+        self.bin_sep_lst = eval(config['METRIC'].get('bin_sep_lst', None))
+
+        self.is_visulized = config['VISUALIZED']
+        if self.is_visulized:
+            tensor_board_dir = os.path.join(
+                log_dir, self.model_name, self.data_name, f'{self.task}_{self.random_seed}_{self.model_name}')
+            self.writer = SummaryWriter(tensor_board_dir)
+            tqdm.write(self._log(f'tensor_board_pth: {tensor_board_dir}'))
+            self.vis_cnt = 1
+
     def get_history_lst(self):
         # 获取用户历史行为列表
         with open(f'./data/{self.data_name}/splited_data/user2v.json', 'r', encoding='utf-8') as f:
@@ -95,6 +106,8 @@ class BaseTrainer:
         config_str = ''
         config_str += '=' * 10 + "Config" + '=' * 10 + '\n'
         for k, v in self.config.items():
+            if k == 'VISUALIZED':
+                continue
             config_str += k + ': \n'
             for _k, _v in v.items():
                 config_str += f'\t{_k}: {_v}\n'
@@ -115,10 +128,41 @@ class BaseTrainer:
         # 根据metric结果，生成文本
         for t in self.metric.metric_dict.keys():
             for m in self.metric.metric_dict[t].keys():
+                metric_vis_dict = {}
+                bin_metric_vis_dict = {}
                 for k in self.metric.metric_dict[t][m].keys():
                     v = self.metric.metric_dict[t][m][k]['value']
+                    if self.is_visulized:
+                        metric_vis_dict[f'{m}@{k}'] = v
                     metric_str += f'{t} {m}@{k}: {v:.4f}\t'
+
+                    if self.bin_sep_lst is not None:
+                        metric_str += '\n'
+                        bin_metric_vis_dict[k] = {}
+                        for i in range(len(self.bin_sep_lst)):
+                            v = self.metric.metric_dict[t][m][k]['bin_value'][i]
+                            s = self.bin_sep_lst[i]
+                            if i == len(self.bin_sep_lst) - 1:
+                                e = '∞'
+                            else:
+                                e = self.bin_sep_lst[i + 1]
+
+                            if self.is_visulized:
+                                bin_metric_vis_dict[k][f'{m}@{k}_in_{s}-{e}'] = v
+
+                            metric_str += f'{t} {m}@{k} in {s}-{e}: {v:.4f}\t'
+                        metric_str += '\n'
+
+                if self.is_visulized:
+                    self.writer.add_scalars(f'{m}/total_{m}', metric_vis_dict, self.vis_cnt)
+                    if self.bin_sep_lst is not None:
+                        for k in bin_metric_vis_dict.keys():
+                            self.writer.add_scalars(f'{m}/bin_{m}/{m}@{k}', bin_metric_vis_dict[k], self.vis_cnt)
                 metric_str += '\n'
+
+        if self.is_visulized:
+            self.vis_cnt += 1
+
         self.metric.clear_metrics()
         return metric_str
 
@@ -202,6 +246,30 @@ class BaseTrainer:
         self.val_pred_g = val_pred_g.to(self.device)
         self.test_pred_g = test_pred_g.to(self.device)
 
+        # 分bin测试用
+        val_e_id_lst = []
+        test_e_id_lst = []
+        if self.bin_sep_lst is not None:
+            for i in range(len(self.bin_sep_lst)):
+                s = self.bin_sep_lst[i]
+                if i == len(self.bin_sep_lst) - 1:
+                    mask = (self.train_g.out_degrees(etype='rate') >= s)
+                else:
+                    e = self.bin_sep_lst[i + 1]
+                    mask = (self.train_g.out_degrees(etype='rate') >= s) * \
+                           (self.train_g.out_degrees(etype='rate') < e)
+
+                u_lst = self.train_g.nodes('user').masked_select(mask)
+                # 验证集
+                u = self.val_pred_g.edges(etype='rate')[0]
+                e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
+                val_e_id_lst.append(e_id)
+                # 测试集
+                u = self.test_pred_g.edges(etype='rate')[0]
+                e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
+                test_e_id_lst.append(e_id)
+            self.metric.bins_id_lst = val_e_id_lst  # 验证集
+
         side_info = self.get_side_info()
         for e in range(1, epoch + 1):
             """
@@ -224,13 +292,13 @@ class BaseTrainer:
             if e % self.eval_step == 0:
                 # 在训练图上跑节点表示，在验证图上预测边的概率
                 self.metric.clear_metrics()
-                loss_lst = self.step(mode='evaluate', message_g=self.train_g, pred_g=self.val_pred_g, side_info=side_info)
+                val_loss_lst = self.step(mode='evaluate', message_g=self.train_g, pred_g=self.val_pred_g, side_info=side_info)
                 self.metric.get_batch_metrics()
                 metric_str = f'Evaluate Epoch: {e}\n'
                 for j in range(len(loss_name)):
                     if len(loss_name) == 1:
-                        loss_lst = [loss_lst]
-                    metric_str += f'{loss_name[j]}: {loss_lst[j]:.4f}\t'
+                        val_loss_lst = [val_loss_lst]
+                    metric_str += f'{loss_name[j]}: {val_loss_lst[j]:.4f}\t'
                 metric_str += '\n'
                 metric_str = self._generate_metric_str(metric_str)
                 tqdm.write(self._log(metric_str))
@@ -245,6 +313,12 @@ class BaseTrainer:
                     break
                 else:
                     self.metric.is_early_stop = False
+
+                if self.is_visulized:
+                    for j in range(len(loss_name)):
+                        self.writer.add_scalar(f'loss/Train_{loss_name[j]}', all_loss_lst[j], e)
+                        self.writer.add_scalar(f'loss/Val_{loss_name[j]}', val_loss_lst[j], e)
+
             self.lr_scheduler.step()
         tqdm.write(self._log(self.metric.print_best_metrics()))
 
@@ -252,6 +326,11 @@ class BaseTrainer:
         # 加载最优模型
         self._load_model(self.save_pth)
         self.metric.clear_metrics()
+
+        # 分bin
+        if self.bin_sep_lst is not None:
+            self.metric.bins_id_lst = test_e_id_lst
+
         # 在训练图上跑节点表示，在测试图上预测边的概率
         loss_lst = self.step(mode='evaluate', message_g=self.train_g, pred_g=self.test_pred_g, side_info=side_info)
         self.metric.get_batch_metrics()

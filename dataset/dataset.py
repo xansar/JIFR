@@ -56,12 +56,12 @@ class RateCommonDataset(DGLDataset):
 
     def process(self):
         record = {}
-        u = np.empty(0)
-        i = np.empty(0)
+        u = np.empty(0, dtype=np.int32)
+        i = np.empty(0, dtype=np.int32)
         # 将所有的边都读到总图中
         for mode in ['train', 'val', 'test']:
             rate_pth = os.path.join(self.data_pth, mode + '.rate')
-            record[mode] = np.loadtxt(rate_pth, delimiter=',', dtype=np.float32)
+            record[mode] = np.loadtxt(rate_pth, delimiter=',', dtype=np.int32)
             u = np.concatenate([u, record[mode][:, 0]])
             i = np.concatenate([i, record[mode][:, 1]])
         print('=' * 20 + 'read rate data finished' + '=' * 20)

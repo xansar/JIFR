@@ -55,13 +55,18 @@ def setup_seed(seed):
 def parse_args():
     # Parses the arguments.
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('--config_pth', type=str, default='DiffnetPP.ini',
+    parser.add_argument('--config_pth', type=str, default='MF.ini',
                         help='Choose config')
+    parser.add_argument('--tensorboard', type=bool, default=True,
+                        help='whether to visulize train logs with tensorboard')
     return parser.parse_args()
 
 
-def run(config_pth):
+def run(config_pth, is_visulized):
     config = get_config(config_pth)
+    if is_visulized:
+        config.update({'VISUALIZED': True})
+
     seed = eval(config['TRAIN']['random_seed'])
 
     # # 随机抽seed
@@ -142,4 +147,5 @@ if __name__ == '__main__':
     #     for i in range(3):
     #         run(config_pth)
     args = parse_args()
-    run(args.config_pth)
+
+    run(args.config_pth, args.tensorboard)
