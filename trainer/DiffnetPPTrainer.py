@@ -104,7 +104,6 @@ class DiffnetPPTrainer(BaseTrainer):
             loss = self.loss_func(pos_pred, neg_pred)
             loss.backward()
             self.optimizer.step()
-            self.lr_scheduler.step()
             return loss.item()
         elif mode == 'evaluate':
             with torch.no_grad():
@@ -125,68 +124,5 @@ class DiffnetPPTrainer(BaseTrainer):
             raise ValueError("Wrong Mode")
 
     def train(self):
-        # 整体训练流程
-        tqdm.write(self._log("=" * 10 + "TRAIN BEGIN" + "=" * 10))
-        epoch = eval(self.config['TRAIN']['epoch'])
-        # 从左到右：训练图，用于验证的图，用于测试的图
-        train_g, val_pred_g, test_pred_g = self.get_graphs()
-        train_g = train_g.to(self.device)
-        val_pred_g = val_pred_g.to(self.device)
-        test_pred_g = test_pred_g.to(self.device)
-
-        for e in range(1, epoch + 1):
-            """
-            write codes for train
-            and return loss
-            """
-
-            loss = self.step(
-                mode='train',
-                train_pos_g=train_g
-            )
-            metric_str = f'Train Epoch: {e}\n' \
-                         f'Loss: {loss:.4f}\n'
-
-            if e % self.eval_step == 0:
-                # 在训练图上跑节点表示，在验证图上预测边的概率
-                self.metric.clear_metrics()
-                loss = self.step(
-                    mode='evaluate',
-                    message_g=train_g,
-                    pred_g=val_pred_g
-                )
-                self.metric.get_batch_metrics()
-                metric_str += f'Evaluate Epoch: {e}\n' \
-                              f'Loss: {loss:.4f}\n'
-                metric_str = self._generate_metric_str(metric_str)
-            tqdm.write(self._log(metric_str))
-
-            # 保存最好模型
-            if self.metric.is_save:
-                self._save_model(self.save_pth)
-                self.metric.is_save = False
-            # 是否早停
-            if self.metric.is_early_stop and e >= self.warm_epoch:
-                tqdm.write(self._log("Early Stop!"))
-                break
-            else:
-                self.metric.is_early_stop = False
-
-        tqdm.write(self._log(self.metric.print_best_metrics()))
-
-        # 开始测试
-        # 加载最优模型
-        self._load_model(self.save_pth)
-        self.metric.clear_metrics()
-        # 在训练图上跑节点表示，在测试图上预测边的概率
-        loss = self.step(
-            mode='evaluate',
-            message_g=train_g,
-            pred_g=test_pred_g
-        )
-        self.metric.get_batch_metrics()
-        metric_str =  f'Test Epoch: \n' \
-                      f'Loss: {loss:.4f}\n'
-        metric_str = self._generate_metric_str(metric_str)
-        tqdm.write(self._log(metric_str))
-        tqdm.write("=" * 10 + "TRAIN END" + "=" * 10)
+        loss_name = ['Loss']
+        self._train(loss_name)
