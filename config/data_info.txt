@@ -1,9 +1,9 @@
 Epinions
-pred_user_num 18529
-total_user_num 44893
-item_num 49113
+pred_user_num = 16809
+total_user_num = 16809
+item_num = 47856
 
 Ciao
-pred_user_num 5148
-total_user_num 7230
-item_num 33819
+pred_user_num = 4886
+total_user_num = 4886
+item_num = 30826

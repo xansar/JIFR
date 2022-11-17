@@ -69,9 +69,9 @@ def run(config_pth, is_visulized):
 
     seed = eval(config['TRAIN']['random_seed'])
 
-    # # 随机抽seed
-    # seed = random.randint(0, 145161)
-    # config['TRAIN']['random_seed'] = str(seed)
+    # 随机抽seed
+    seed = random.randint(0, 145161)
+    config['TRAIN']['random_seed'] = str(seed)
 
     setup_seed(seed)
     data_name = config['DATA']['data_name']
@@ -141,11 +141,10 @@ def run(config_pth, is_visulized):
 
 
 if __name__ == '__main__':
-    # model_name = ['CiaoGraphRec']
-    # for n in model_name:
-    #     config_pth = n + '.ini'
-    #     for i in range(3):
-    #         run(config_pth)
+    model_name = ['TrustSVD', 'FusionLightGCN', 'DiffnetPP']
     args = parse_args()
-
-    run(args.config_pth, args.tensorboard)
+    for n in model_name:
+        config_pth = 'Ciao' + n + '.ini'
+        for i in range(3):
+            run(config_pth, args.tensorboard)
+    # run(args.config_pth)
