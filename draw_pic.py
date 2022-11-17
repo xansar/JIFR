@@ -49,17 +49,21 @@ def get_data_from_log(models_lst, dataset_name="Epinions"):
                 processed_data[m][f'{metric}@{k}'].update({'mean': mean_, 'std': std_})
     return processed_data
 
-def draw_grouped_bars(models_lst, processed_data):
+def draw_grouped_bars(models_lst, processed_data, data_name):
     labels = ['total', '0-8', '8-16', '16-32', '32-64', '64-']
     model_name = models_lst
     metric_name = ['HR@3', 'nDCG@3', 'HR@5', 'nDCG@5', 'HR@10', 'nDCG@10']
-    plt.style.use('tableau-colorblind10')
-    plt.figure(figsize=(35, 20))
+    # xlims = [(0.14, 0.205), (0.1, 0.165), (0.18, 0.27), (0.13, 0.188), (0.28, 0.355), (0.15, 0.215)]   # epinions
+    xlims = [(0.1, 0.185), (0.08, 0.155), (0.13, 0.23), (0.09, 0.165), (0.17, 0.29), (0.11, 0.185)]  # ciao
+    plt.style.use('ggplot')
+    plt.figure(figsize=(24, 32))
     plt.rcParams.update({"font.size": 20})
+    plt.rc('font', family='Times New Roman')
     for i in range(6):
         metric = metric_name[i]
         plt.subplot(eval(str(32) + str(i + 1)))
-        # plt.ylim(0, 0.4)
+        plt.ylim(*xlims[i])
+        # plt.xlim(-0.75, 7)
         x = np.arange(len(labels))
         width = 0.15
         for i in range(5):
@@ -68,16 +72,21 @@ def draw_grouped_bars(models_lst, processed_data):
             yerr = processed_data[m][metric]['std']
             if m == 'FusionLightGCN':
                 m = 'F-LightGCN'
-            plt.bar(x - (i - 2) * width, y, width, label=m, yerr=yerr, error_kw=dict(elinewidth=3, capsize=4))
-        plt.ylabel('Scores', fontsize=24)
-        plt.title(metric)
-        plt.xticks(x, labels=labels, fontsize=24)
-        plt.tick_params(labelsize=24)
-    # plt.legend(loc='upper right', fontsize=20)
-    plt.legend(loc=(1.05, 3), fontsize=20)
+            plt.bar(x - (i - 2) * width, y, width, label=m, yerr=yerr, error_kw=dict(elinewidth=1, capsize=4))
+        plt.ylabel('Scores', fontsize=34)
+        plt.xlabel('Groups', fontsize=34)
+        plt.title(metric, fontsize=50, y=1.03)
+        plt.xticks(x, labels=labels, fontsize=30)
+        plt.tick_params(labelsize=30)
+        plt.legend(loc='upper left', fontsize=24)
+        # plt.legend(loc=(0.73, 0.35), fontsize=20)
+    plt.suptitle(data_name, fontsize=80, y=0.98)
+    plt.subplots_adjust(left=0.08, right=0.95, top=0.93, bottom=0.05, hspace=0.33)
     plt.show()
 
 if __name__ == '__main__':
+    print(plt.style.available)
     models_lst = ['TrustSVD', 'DiffnetPP', 'FusionLightGCN', 'LightGCN', 'MF']  # 列表中越靠右，bar越靠左，legend越靠下
-    processed_data = get_data_from_log(models_lst, 'Epinions')
-    draw_grouped_bars(models_lst, processed_data)
+    data_name = 'Ciao'
+    processed_data = get_data_from_log(models_lst, data_name)
+    draw_grouped_bars(models_lst, processed_data, data_name)
