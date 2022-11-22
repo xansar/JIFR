@@ -16,7 +16,7 @@ import torch
 class BaseMetric:
     def __init__(self, config):
         self.config = config
-        self.bin_sep_lst = eval(config['METRIC'].get('bin_sep_lst', None))
+        self.bin_sep_lst = eval(config['METRIC'].get('bin_sep_lst', 'None'))
         self.is_early_stop = False
         self.is_save = False
 

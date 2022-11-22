@@ -67,7 +67,7 @@ class BaseTrainer:
         self.step_per_epoch = eval(self.config['TRAIN']['step_per_epoch'])
         self.get_history_lst()
 
-        self.bin_sep_lst = eval(config['METRIC'].get('bin_sep_lst', None))
+        self.bin_sep_lst = eval(config['METRIC'].get('bin_sep_lst', 'None'))
 
         self.is_visulized = config['VISUALIZED']
         if self.is_visulized:
