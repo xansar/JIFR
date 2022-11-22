@@ -153,7 +153,7 @@ class BaseTrainer:
                             metric_str += f'{t} {m}@{k} in {s}-{e}: {v:.4f}\t'
                         metric_str += '\n'
 
-                if self.is_visulized:
+                if self.is_visulized and is_val:
                     self.writer.add_scalars(f'{m}/total_{m}', metric_vis_dict, self.vis_cnt)
                     if self.bin_sep_lst is not None:
                         for k in bin_metric_vis_dict.keys():
