@@ -124,7 +124,7 @@ class BaseTrainer:
             self.loss_func = self.loss_func.to(self.config['TRAIN']['device'])
             self.config['TRAIN']['device'] = device
 
-    def _generate_metric_str(self, metric_str):
+    def _generate_metric_str(self, metric_str, is_val=True):
         # 根据metric结果，生成文本
         for t in self.metric.metric_dict.keys():
             for m in self.metric.metric_dict[t].keys():
