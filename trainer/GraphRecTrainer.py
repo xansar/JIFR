@@ -124,9 +124,9 @@ class GraphRecTrainer(BaseTrainer):
                 train_neg_g
             )
             neg_pred = neg_pred.reshape(-1, self.train_neg_num)
-
-            if cur_step == 0:
-                self.log_pred_histgram(pos_pred, neg_pred, mode)
+            if self.bin_sep_lst is not None and self.is_visulized == True:
+                if cur_step == 0:
+                    self.log_pred_histgram(pos_pred, neg_pred, mode)
 
             loss = self.loss_func(pos_pred, neg_pred)
             loss.backward()
@@ -147,8 +147,8 @@ class GraphRecTrainer(BaseTrainer):
                 neg_pred = neg_pred.reshape(-1, self.neg_num)
                 src, _ = pred_g.edges(etype='rate')
                 neg_pred = neg_pred[src]
-
-                self.log_pred_histgram(pos_pred, neg_pred, mode)
+                if self.bin_sep_lst is not None and self.is_visulized == True:
+                    self.log_pred_histgram(pos_pred, neg_pred, mode)
 
                 loss = self.loss_func(pos_pred, neg_pred)
                 self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu(), task=self.task)
