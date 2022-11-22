@@ -235,6 +235,22 @@ class BaseTrainer:
     def get_side_info(self):
         return None
 
+    def log_pred_histgram(self, pos_pred, neg_pred, mode='train'):
+        pos_pred, neg_pred = pos_pred.detach().cpu(), torch.mean(neg_pred.detach(), dim=1, keepdim=True).cpu()
+        cat_pred = torch.cat([pos_pred, neg_pred], dim=1)
+        global_step = self.cur_e if mode != 'test' else 1
+        self.writer.add_histogram(f'{mode}/total_pos_pred', pos_pred, global_step=global_step)
+        self.writer.add_histogram(f'{mode}/total_neg_pred', neg_pred, global_step=global_step)
+        self.writer.add_histogram(f'{mode}/total_cat_pred', cat_pred, global_step=global_step)
+        if self.bin_sep_lst is not None:
+            ## bin histgram
+            for i in range(len(self.bins_id_lst)):
+                id_lst = self.bins_id_lst[i]
+                s, e = self.bins_start_end_lst[i]
+                self.writer.add_histogram(f'{mode}/{s}_{e}_pos_pred', pos_pred[id_lst], global_step=global_step)
+                self.writer.add_histogram(f'{mode}/{s}_{e}_neg_pred', neg_pred[id_lst], global_step=global_step)
+                self.writer.add_histogram(f'{mode}/{s}_{e}_cat_pred', cat_pred[id_lst], global_step=global_step)
+
     def _train(self, loss_name, side_info: dict=None):
         bar_range = trange if self.step_per_epoch > 10 else lambda x: range(x)
         # 整体训练流程
