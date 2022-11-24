@@ -79,6 +79,7 @@ class LightGCNTrainer(BaseTrainer):
         # 模型单步计算
         if mode == 'train':
             train_pos_g = inputs['train_pos_g']
+            cur_step = inputs['cur_step']
             train_neg_g = self.construct_negative_graph(train_pos_g, self.train_neg_num, etype=('user', 'rate', 'item'))
             self.model.train()
             self.optimizer.zero_grad()
@@ -88,11 +89,15 @@ class LightGCNTrainer(BaseTrainer):
                 train_neg_g
             )
             neg_pred = neg_pred.reshape(-1, self.train_neg_num)
+            if self.bin_sep_lst is not None and self.is_visulized == True:
+                if cur_step == 0:
+                    self.log_pred_histgram(pos_pred, neg_pred, mode)
+
             loss = self.loss_func(pos_pred, neg_pred)
             loss.backward()
             self.optimizer.step()
             return loss.item()
-        elif mode == 'evaluate':
+        elif mode == 'evaluate' or mode == 'test':
             with torch.no_grad():
                 message_g = inputs['message_g']
                 pred_g = inputs['pred_g']
@@ -104,6 +109,9 @@ class LightGCNTrainer(BaseTrainer):
                     neg_g
                 )
                 neg_pred = neg_pred.reshape(-1, self.neg_num)
+                if self.bin_sep_lst is not None and self.is_visulized == True:
+                    self.log_pred_histgram(pos_pred, neg_pred, mode)
+
                 loss = self.loss_func(pos_pred, neg_pred)
                 self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu(), task=self.task)
                 return loss.item()

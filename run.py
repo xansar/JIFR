@@ -57,21 +57,20 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run Model.")
     parser.add_argument('--config_pth', type=str, default='MF.ini',
                         help='Choose config')
-    parser.add_argument('--tensorboard', type=bool, default=True,
+    parser.add_argument('--tensorboard', type=bool, default=False,
                         help='whether to visulize train logs with tensorboard')
     return parser.parse_args()
 
 
 def run(config_pth, is_visulized):
     config = get_config(config_pth)
-    if is_visulized:
-        config.update({'VISUALIZED': True})
+    config.update({'VISUALIZED': is_visulized})
 
     seed = eval(config['TRAIN']['random_seed'])
 
     # 随机抽seed
-    seed = random.randint(0, 145161)
-    config['TRAIN']['random_seed'] = str(seed)
+    # seed = random.randint(0, 145161)
+    # config['TRAIN']['random_seed'] = str(seed)
 
     setup_seed(seed)
     data_name = config['DATA']['data_name']
@@ -141,10 +140,11 @@ def run(config_pth, is_visulized):
 
 
 if __name__ == '__main__':
-    model_name = ['TrustSVD', 'FusionLightGCN', 'DiffnetPP']
     args = parse_args()
-    for n in model_name:
-        config_pth = 'Ciao' + n + '.ini'
-        for i in range(3):
-            run(config_pth, args.tensorboard)
-    # run(args.config_pth)
+    run(args.config_pth, True)
+    # model_name = ['LightGCN', 'FusionLightGCN']
+    # for n in model_name:
+    #     config_pth = 'Ciao' + n + '.ini'
+    #     for i in range(1):
+    #         run(config_pth, True)
+
