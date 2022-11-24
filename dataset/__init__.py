@@ -10,4 +10,4 @@
 """
 
 # import lib
-from .dataset import RateCommonDataset, SocialDataset
+from .dataset import DGLRecDataset
