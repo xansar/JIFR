@@ -39,10 +39,25 @@ class MFModel(nn.Module):
             {'user': self.pred_user_num, 'item': self.item_num}, self.embedding_size
         )
         self.pred = HeteroDotProductPredictor()
+        self.init_weights()
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0, std=0.01)
+                nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.Embedding):
+                nn.init.normal_(m.weight, mean=0, std=0.01)
 
     def forward(self, messege_g, pos_pred_g, neg_pred_g):
         idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
-        res_embedding = self.embedding(idx)
-        pos_score = self.pred(pos_pred_g, res_embedding, 'rate')
-        neg_score = self.pred(neg_pred_g, res_embedding, 'rate')
+        if self.task == 'Link':
+            etype = 'trust'
+            res_embedding = self.embedding(idx)['user']
+        elif self.task == 'Rate':
+            etype = 'rate'
+            res_embedding = self.embedding(idx)
+
+        pos_score = self.pred(pos_pred_g, res_embedding, etype)
+        neg_score = self.pred(neg_pred_g, res_embedding, etype)
         return pos_score, neg_score

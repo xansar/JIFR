@@ -78,9 +78,15 @@ class MFTrainer(BaseTrainer):
 
     def step(self, mode='train', **inputs):
         # 模型单步计算
+        if self.task == 'Rate':
+            etype = ('user', 'rate', 'item')
+        elif self.task == 'Link':
+            etype = ('user', 'trust', 'user')
+
         if mode == 'train':
             train_pos_g = inputs['train_pos_g']
-            train_neg_g = self.construct_negative_graph(train_pos_g, self.train_neg_num, etype=('user', 'rate', 'item'))
+            cur_step = inputs['cur_step']
+            train_neg_g = self.construct_negative_graph(train_pos_g, self.train_neg_num, etype=etype)
             self.model.train()
             self.optimizer.zero_grad()
             pos_pred, neg_pred = self.model(
@@ -89,15 +95,18 @@ class MFTrainer(BaseTrainer):
                 train_neg_g,
             )
             neg_pred = neg_pred.reshape(-1, self.train_neg_num)
+            if self.bin_sep_lst is not None and self.is_visulized == True:
+                if cur_step == 0:
+                    self.log_pred_histgram(pos_pred, neg_pred, mode)
             loss = self.loss_func(pos_pred, neg_pred)
             loss.backward()
             self.optimizer.step()
             return loss.item()
-        elif mode == 'evaluate':
+        elif mode == 'evaluate' or mode == 'test':
             with torch.no_grad():
                 message_g = inputs['message_g']
                 pred_g = inputs['pred_g']
-                neg_g = self.construct_negative_graph(pred_g, self.neg_num, etype=('user', 'rate', 'item'))
+                neg_g = self.construct_negative_graph(pred_g, self.neg_num, etype=etype)
                 self.model.eval()
                 pos_pred, neg_pred = self.model(
                     message_g,
@@ -105,6 +114,8 @@ class MFTrainer(BaseTrainer):
                     neg_g
                 )
                 neg_pred = neg_pred.reshape(-1, self.neg_num)
+                if self.bin_sep_lst is not None and self.is_visulized == True:
+                    self.log_pred_histgram(pos_pred, neg_pred, mode)
                 loss = self.loss_func(pos_pred, neg_pred)
                 self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu(), task=self.task)
                 return loss.item()
