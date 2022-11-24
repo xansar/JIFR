@@ -24,11 +24,11 @@ from trainer import *
 
 from configparser import ConfigParser
 
-CommonModel = ['MF']
+CommonModel = ['MF', 'AA']
 GCNModel = ['LightGCN', 'TrustSVD', 'SVDPP', 'Sorec', 'MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec', 'SocialMF']
 
 use_common_datset = ['LightGCN', 'MF']
-use_social_dataset = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec']
+use_social_dataset = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec', 'AA']
 use_directed_social_dataset = ['TrustSVD', 'SVDPP', 'Sorec', 'SocialMF']
 
 class MyConfigParser(ConfigParser):

@@ -99,6 +99,7 @@ class BaseTrainer:
             for u, v in user2trust.items():
                 if self.task == 'Link':
                     self.u_lst.append(int(u))
+                v.append(int(u))
                 self.trust_lst.append(List(v))
 
     def _print_config(self):
@@ -251,6 +252,49 @@ class BaseTrainer:
                 self.writer.add_histogram(f'{mode}/{s}_{e}_neg_pred', neg_pred[id_lst], global_step=global_step)
                 self.writer.add_histogram(f'{mode}/{s}_{e}_cat_pred', cat_pred[id_lst], global_step=global_step)
 
+    def get_bins_eid_lst(self):
+        if self.task == 'Rate':
+            etype = 'rate'
+        else:
+            etype = 'trust'
+        train_e_id_lst = []
+        val_e_id_lst = []
+        test_e_id_lst = []
+
+        # 分组起点终点
+        self.bins_start_end_lst = []
+        # u_num_lst = []
+        for i in range(len(self.bin_sep_lst)):
+            s = self.bin_sep_lst[i]
+            if i == len(self.bin_sep_lst) - 1:
+                mask = (self.train_g.out_degrees(etype=etype) >= s)
+                e = '∞'
+            else:
+                e = self.bin_sep_lst[i + 1]
+                mask = (self.train_g.out_degrees(etype=etype) >= s) * \
+                       (self.train_g.out_degrees(etype=etype) < e)
+            self.bins_start_end_lst.append((s, e))
+
+            u_lst = self.train_g.nodes('user').masked_select(mask)
+            # u_num_lst.append(len(u_lst) / self.total_user_num)
+            # 训练集
+            u = self.train_g.edges(etype=etype)[0]
+            e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
+            train_e_id_lst.append(e_id)
+            # 验证集
+            u = self.val_pred_g.edges(etype=etype)[0]
+            e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
+            val_e_id_lst.append(e_id)
+            # 测试集
+            u = self.test_pred_g.edges(etype=etype)[0]
+            e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
+            test_e_id_lst.append(e_id)
+        self.metric.bins_id_lst = val_e_id_lst  # 验证集，测试集不用算metric
+        print([len(lst) for lst in train_e_id_lst])
+        print([len(lst) for lst in val_e_id_lst])
+        print([len(lst) for lst in test_e_id_lst])
+        return train_e_id_lst, val_e_id_lst, test_e_id_lst
+
     def _train(self, loss_name, side_info: dict=None):
         bar_range = trange if self.step_per_epoch > 10 else lambda x: range(x)
         # 整体训练流程
@@ -263,42 +307,50 @@ class BaseTrainer:
         self.test_pred_g = test_pred_g.to(self.device)
 
         # 分bin测试用
-        # train_e_id_lst = []
-        val_e_id_lst = []
-        test_e_id_lst = []
-
-        # 分组起点终点
-        self.bins_start_end_lst = []
-        # u_num_lst = []
         if self.bin_sep_lst is not None:
-            for i in range(len(self.bin_sep_lst)):
-                s = self.bin_sep_lst[i]
-                if i == len(self.bin_sep_lst) - 1:
-                    mask = (self.train_g.out_degrees(etype='rate') >= s)
-                    e = '∞'
-                else:
-                    e = self.bin_sep_lst[i + 1]
-                    mask = (self.train_g.out_degrees(etype='rate') >= s) * \
-                           (self.train_g.out_degrees(etype='rate') < e)
-                self.bins_start_end_lst.append((s, e))
-
-                u_lst = self.train_g.nodes('user').masked_select(mask)
-                # u_num_lst.append(len(u_lst) / self.total_user_num)
-                # # 训练集
-                # u = self.train_g.edges(etype='rate')[0]
-                # e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
-                # train_e_id_lst.append(e_id)
-                # 验证集
-                u = self.val_pred_g.edges(etype='rate')[0]
-                e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
-                val_e_id_lst.append(e_id)
-                # 测试集
-                u = self.test_pred_g.edges(etype='rate')[0]
-                e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
-                test_e_id_lst.append(e_id)
-            self.metric.bins_id_lst = val_e_id_lst  # 验证集，测试集不用算metric
-
+            train_e_id_lst, val_e_id_lst, test_e_id_lst = self.get_bins_eid_lst()
+            # train_e_id_lst = []
+            # val_e_id_lst = []
+            # test_e_id_lst = []
+            #
+            # # 分组起点终点
+            # self.bins_start_end_lst = []
+            # # u_num_lst = []
+            # for i in range(len(self.bin_sep_lst)):
+            #     s = self.bin_sep_lst[i]
+            #     if i == len(self.bin_sep_lst) - 1:
+            #         mask = (self.train_g.out_degrees(etype='rate') >= s)
+            #         e = '∞'
+            #     else:
+            #         e = self.bin_sep_lst[i + 1]
+            #         mask = (self.train_g.out_degrees(etype='rate') >= s) * \
+            #                (self.train_g.out_degrees(etype='rate') < e)
+            #     self.bins_start_end_lst.append((s, e))
+            #
+            #     u_lst = self.train_g.nodes('user').masked_select(mask)
+            #     # u_num_lst.append(len(u_lst) / self.total_user_num)
+            #     # 训练集
+            #     u = self.train_g.edges(etype='rate')[0]
+            #     e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
+            #     train_e_id_lst.append(e_id)
+            #     # 验证集
+            #     u = self.val_pred_g.edges(etype='rate')[0]
+            #     e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
+            #     val_e_id_lst.append(e_id)
+            #     # 测试集
+            #     u = self.test_pred_g.edges(etype='rate')[0]
+            #     e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
+            #     test_e_id_lst.append(e_id)
+            # self.metric.bins_id_lst = val_e_id_lst  # 验证集，测试集不用算metric
+            # print([len(lst) for lst in train_e_id_lst])
+            # print([len(lst) for lst in val_e_id_lst])
+            # print([len(lst) for lst in test_e_id_lst])
+        # print(u_num_lst)
+        # exit()
         side_info = self.get_side_info()
+
+        # # drop graph
+        # drop_edger = dgl.DropEdge()
         for e in range(1, epoch + 1):
             """
             write codes for train
@@ -307,7 +359,8 @@ class BaseTrainer:
             self.cur_e = e
 
             # 分箱看histgram
-            self.bins_id_lst = train_e_id_lst
+            if self.bin_sep_lst is not None and self.is_visulized == True:
+                self.bins_id_lst = train_e_id_lst
 
             all_loss_lst = [0.0 for _ in range(len(loss_name))]
             for i in bar_range(self.step_per_epoch):
@@ -323,7 +376,8 @@ class BaseTrainer:
             tqdm.write(self._log(metric_str))
 
             if e % self.eval_step == 0:
-                self.bins_id_lst = val_e_id_lst
+                if self.bin_sep_lst is not None:
+                    self.bins_id_lst = val_e_id_lst
                 # 在训练图上跑节点表示，在验证图上预测边的概率
                 self.metric.clear_metrics()
                 val_loss_lst = self.step(mode='evaluate', message_g=self.train_g, pred_g=self.val_pred_g, side_info=side_info)

@@ -69,7 +69,7 @@ class BaseMetric:
         pos_pred, neg_pred = input_
         # total_pred, bsz * 101, 第一维是正样本预测值
         # 随机将pos插入一个位置idx
-        target_idx = torch.randint(0, neg_pred.shape[1] + 1, (1,))
+        target_idx = torch.randint(max(self.ks) + 1, neg_pred.shape[1] + 1, (1,))
         total_pred = torch.cat([neg_pred[:, :target_idx], pos_pred, neg_pred[:, target_idx:]], dim=1)
         for m in self.metric_name:
             eval(f'self._compute_{m}')(total_pred, target_idx, task)

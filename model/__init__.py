@@ -27,3 +27,6 @@ from .MutualRecModel import *
 from .FusionLightGCNModel import *
 from .DiffnetPPModel import *
 from .GraphRecModel import *
+
+# link
+from .AAModel import *
