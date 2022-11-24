@@ -78,12 +78,12 @@ def run(config_pth, is_visulized):
     task = config['TRAIN']['task']
 
     if model_name in use_common_datset:
-        dataset = RateCommonDataset(config)
+        dataset = DGLRecDataset(config, use_social=False)
     else:
         if model_name in use_social_dataset:
-            dataset = SocialDataset(config)
+            dataset = DGLDataset(config, use_social=True, directed=False)
         elif model_name in use_directed_social_dataset:
-            dataset = SocialDataset(config, directed=True)
+            dataset = DGLDataset(config, use_social=True, directed=True)
         else:
             raise ValueError("Wrong Model Name!!!")
 
@@ -141,7 +141,7 @@ def run(config_pth, is_visulized):
 
 if __name__ == '__main__':
     args = parse_args()
-    run(args.config_pth, True)
+    run(args.config_pth, False)
     # model_name = ['LightGCN', 'FusionLightGCN']
     # for n in model_name:
     #     config_pth = 'Ciao' + n + '.ini'

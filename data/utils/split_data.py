@@ -75,7 +75,7 @@ def split_data(train_ratio=0.75, val_ratio=0.05, test_ratio=0.2, raw_pth='../Ext
         json.dump({'user2item': user2item, 'user2trust':user2trust}, f, indent=2)
 
 if __name__ == '__main__':
-    split_data(0.8, 0.1, 0.1, raw_pth='../Epinions')
+    split_data(0.8, 0.1, 0.1, raw_pth='../Ciao')
 
 
 
