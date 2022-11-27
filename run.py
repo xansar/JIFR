@@ -39,13 +39,6 @@ class MyConfigParser(ConfigParser):
     def optionxform(self, optionstr):
         return optionstr
 
-
-def get_config(config_pth):
-    config = MyConfigParser()
-    config.read('./config/' + config_pth, encoding='utf-8')
-    return config._sections
-
-
 def setup_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -56,11 +49,30 @@ def setup_seed(seed):
 def parse_args():
     # Parses the arguments.
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('--config_pth', type=str, default='CiaoMF.ini',
+    parser.add_argument('-c', '--config_pth', type=str, default='MF.ini',
                         help='Choose config')
-    parser.add_argument('--tensorboard', type=bool, default=False,
+    parser.add_argument('-v', '--visulize', type=bool, default=False,
                         help='whether to visulize train logs with tensorboard')
+    parser.add_argument('-d', '--dataset', type=str, default=None,
+                        help='choose dataset')
     return parser.parse_args()
+
+def get_config(args):
+    config = MyConfigParser()
+    config_pth = args.config_pth
+    config.read('./config/' + config_pth, encoding='utf-8')
+    config = config._sections
+
+    if args.dataset is None:
+        data_name = config['DATA']['data_name']
+    else:
+        data_name = args.dataset
+    data_info = get_data_info(data_name)
+    config['DATA']['data_name'] = data_name
+    config['MODEL'].update(data_info)
+
+    config.update({'VISUALIZED': args.visulize})
+    return config
 
 def get_data_info(data_name):
     fp = os.path.join('./data/', data_name, 'behavior_data/data_info.json')
@@ -68,13 +80,9 @@ def get_data_info(data_name):
         data_info = json.load(f)
     return data_info
 
-def run(config_pth, is_visulized):
-    config = get_config(config_pth)
-    data_name = config['DATA']['data_name']
-    data_info = get_data_info(data_name)
-    config['MODEL'].update(data_info)
-
-    config.update({'VISUALIZED': is_visulized})
+def run():
+    args = parse_args()
+    config = get_config(args)
 
     seed = eval(config['TRAIN']['random_seed'])
 
@@ -150,8 +158,7 @@ def run(config_pth, is_visulized):
 
 
 if __name__ == '__main__':
-    args = parse_args()
-    run(args.config_pth, True)
+    run()
     # model_name = ['LightGCN', 'FusionLightGCN']
     # for n in model_name:
     #     config_pth = 'Ciao' + n + '.ini'
