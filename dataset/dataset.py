@@ -30,7 +30,9 @@ class DGLRecDataset(DGLDataset):
         self.task = config['TRAIN']['task']
         self.data_name = config['DATA']['data_name']
         self.data_pth = os.path.join('./data', self.data_name, 'splited_data')
-        self.dir_pth = os.path.join(self.data_pth, self.model_name)
+        self.dir_pth = os.path.join(self.data_pth, 'cache')
+        if not os.path.isdir(self.dir_pth):
+            os.makedirs(self.dir_pth)
 
         print('=' * 20 + 'begin process' + '=' * 20)
         if self.has_cache() is False:
@@ -44,15 +46,15 @@ class DGLRecDataset(DGLDataset):
     def save(self):
         if not os.path.isdir(self.dir_pth):
             os.mkdir(self.dir_pth)
-        graph_pth = os.path.join(self.dir_pth, f'{self.task}_graph.bin')
+        graph_pth = os.path.join(self.dir_pth, f'{self.task}_social-{self.use_social}_direct-{self.directed}_graph.bin')
         dgl.save_graphs(graph_pth, self._g)
-        info_pth = os.path.join(self.dir_pth, f'{self.task}_info.pkl')
+        info_pth = os.path.join(self.dir_pth, f'{self.task}_social-{self.use_social}_direct-{self.directed}_info.pkl')
         info_dict = {
             'train_size': self.train_size,
             'val_size': self.val_size,
         }
 
-        if self.task != 'Link':
+        if (self.task == 'Rate' and self.use_social) or self.task == 'Joint':
             info_dict.update({
                 'train_link_size': self.train_link_size,
                 'val_link_size': self.val_link_size
@@ -61,14 +63,14 @@ class DGLRecDataset(DGLDataset):
         dgl.data.utils.save_info(info_pth, info_dict)
 
     def load(self):
-        graph_pth = os.path.join(self.dir_pth, f'{self.task}_graph.bin')
+        graph_pth = os.path.join(self.dir_pth, f'{self.task}_social-{self.use_social}_direct-{self.directed}_graph.bin')
         self._g = dgl.load_graphs(graph_pth)[0][0]
-        info_pth = os.path.join(self.dir_pth, f'{self.task}_info.pkl')
+        info_pth = os.path.join(self.dir_pth, f'{self.task}_social-{self.use_social}_direct-{self.directed}_info.pkl')
         size_dict = dgl.data.utils.load_info(info_pth)
 
         self.train_size = size_dict['train_size']
         self.val_size = size_dict['val_size']
-        if self.task != 'Link':
+        if (self.task == 'Rate' and self.use_social) or self.task == 'Joint':
             self.train_link_size = size_dict['train_link_size']
             self.val_link_size = size_dict['val_link_size']
 
@@ -140,8 +142,10 @@ class DGLRecDataset(DGLDataset):
         print('=' * 20 + 'save graph finished' + '=' * 20)
 
     def has_cache(self):
-        is_graph = os.path.exists(os.path.join(self.dir_pth, f'{self.task}_graph.bin'))
-        is_info = os.path.exists(os.path.join(self.dir_pth, f'{self.task}_info.pkl'))
+        is_graph = os.path.exists(os.path.join(self.dir_pth,
+                                               f'{self.task}_social-{self.use_social}_direct-{self.directed}_graph.bin'))
+        is_info = os.path.exists(os.path.join(self.dir_pth,
+                                              f'{self.task}_social-{self.use_social}_direct-{self.directed}_info.pkl'))
         if is_info and is_graph:
             return True
         else:
