@@ -10,6 +10,7 @@
 """
 
 import os
+import json
 
 import torch
 import numpy as np
@@ -55,15 +56,24 @@ def setup_seed(seed):
 def parse_args():
     # Parses the arguments.
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('--config_pth', type=str, default='MF.ini',
+    parser.add_argument('--config_pth', type=str, default='CiaoMF.ini',
                         help='Choose config')
     parser.add_argument('--tensorboard', type=bool, default=False,
                         help='whether to visulize train logs with tensorboard')
     return parser.parse_args()
 
+def get_data_info(data_name):
+    fp = os.path.join('./data/', data_name, 'behavior_data/data_info.json')
+    with open(fp, 'r') as f:
+        data_info = json.load(f)
+    return data_info
 
 def run(config_pth, is_visulized):
     config = get_config(config_pth)
+    data_name = config['DATA']['data_name']
+    data_info = get_data_info(data_name)
+    config['MODEL'].update(data_info)
+
     config.update({'VISUALIZED': is_visulized})
 
     seed = eval(config['TRAIN']['random_seed'])
@@ -73,7 +83,7 @@ def run(config_pth, is_visulized):
     # config['TRAIN']['random_seed'] = str(seed)
 
     setup_seed(seed)
-    data_name = config['DATA']['data_name']
+
     model_name = config['MODEL']['model_name']
     task = config['TRAIN']['task']
 
@@ -141,7 +151,7 @@ def run(config_pth, is_visulized):
 
 if __name__ == '__main__':
     args = parse_args()
-    run(args.config_pth, False)
+    run(args.config_pth, True)
     # model_name = ['LightGCN', 'FusionLightGCN']
     # for n in model_name:
     #     config_pth = 'Ciao' + n + '.ini'
