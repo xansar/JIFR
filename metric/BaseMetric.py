@@ -69,12 +69,16 @@ class BaseMetric:
         pos_pred, neg_pred = input_
         # total_pred, bsz * 101, 第一维是正样本预测值
         # 随机将pos插入一个位置idx
-        target_idx = torch.randint(0, neg_pred.shape[1] + 1, (1,))
+        target_idx = torch.randint(max(self.ks) + 1, neg_pred.shape[1] + 1, (1,))
         total_pred = torch.cat([neg_pred[:, :target_idx], pos_pred, neg_pred[:, target_idx:]], dim=1)
         for m in self.metric_name:
             eval(f'self._compute_{m}')(total_pred, target_idx, task)
 
     def get_batch_metrics(self):
+        if len(self.task_lst) == 2:
+            task = 'Rate'
+        else:
+            task = self.task_lst[0]
         for t in self.task_lst:
             for m in self.metric_name:
                 for k in self.ks:
@@ -82,9 +86,9 @@ class BaseMetric:
                     self.metric_dict[t][m][k]['cnt'] = -1
                     if self.metric_dict[t][m][k]['value'] > self.metric_dict[t][m][k]['best']:
                         self.metric_dict[t][m][k]['best'] = self.metric_dict[t][m][k]['value']
-                        if k == self.ks[-1] and t == 'Rate' and m == 'HR':
+                        if k == self.ks[-1] and t == task and m == 'HR':
                             self.is_save = True
-                    elif k == self.ks[-1] and t == 'Rate' and m == 'HR':
+                    elif k == self.ks[-1] and t == task and m == 'HR':
                         self.metric_cnt += 1
                         if self.metric_dict[t][m][k]['value'] < self.early_stop_last and self.metric_cnt * self.eval_step > self.warm_epoch:
                             self.early_stop_cnt += 1

@@ -24,3 +24,6 @@ from .FusionLightGCNTrainer import *
 from .DiffnetPPTrainer import *
 from .MutualRecTrainer import *
 from .GraphRecTrainer import *
+
+# link
+from .AATrainer import *
