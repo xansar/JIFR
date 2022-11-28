@@ -30,3 +30,4 @@ from .GraphRecModel import *
 
 # link
 from .AAModel import *
+from .Node2VecModel import *

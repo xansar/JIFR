@@ -25,11 +25,11 @@ from trainer import *
 
 from configparser import ConfigParser
 
-CommonModel = ['MF', 'AA']
+CommonModel = ['MF', 'AA', 'Node2Vec']
 GCNModel = ['LightGCN', 'TrustSVD', 'SVDPP', 'Sorec', 'MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec', 'SocialMF']
 
 use_common_datset = ['LightGCN', 'MF']
-use_social_dataset = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec', 'AA']
+use_social_dataset = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec', 'AA', 'Node2Vec']
 use_directed_social_dataset = ['TrustSVD', 'SVDPP', 'Sorec', 'SocialMF']
 
 class MyConfigParser(ConfigParser):
@@ -99,9 +99,9 @@ def run():
         dataset = DGLRecDataset(config, use_social=False)
     else:
         if model_name in use_social_dataset:
-            dataset = DGLDataset(config, use_social=True, directed=False)
+            dataset = DGLRecDataset(config, use_social=True, directed=False)
         elif model_name in use_directed_social_dataset:
-            dataset = DGLDataset(config, use_social=True, directed=True)
+            dataset = DGLRecDataset(config, use_social=True, directed=True)
         else:
             raise ValueError("Wrong Model Name!!!")
 
