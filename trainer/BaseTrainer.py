@@ -309,44 +309,6 @@ class BaseTrainer:
         # 分bin测试用
         if self.bin_sep_lst is not None:
             train_e_id_lst, val_e_id_lst, test_e_id_lst = self.get_bins_eid_lst()
-            # train_e_id_lst = []
-            # val_e_id_lst = []
-            # test_e_id_lst = []
-            #
-            # # 分组起点终点
-            # self.bins_start_end_lst = []
-            # # u_num_lst = []
-            # for i in range(len(self.bin_sep_lst)):
-            #     s = self.bin_sep_lst[i]
-            #     if i == len(self.bin_sep_lst) - 1:
-            #         mask = (self.train_g.out_degrees(etype='rate') >= s)
-            #         e = '∞'
-            #     else:
-            #         e = self.bin_sep_lst[i + 1]
-            #         mask = (self.train_g.out_degrees(etype='rate') >= s) * \
-            #                (self.train_g.out_degrees(etype='rate') < e)
-            #     self.bins_start_end_lst.append((s, e))
-            #
-            #     u_lst = self.train_g.nodes('user').masked_select(mask)
-            #     # u_num_lst.append(len(u_lst) / self.total_user_num)
-            #     # 训练集
-            #     u = self.train_g.edges(etype='rate')[0]
-            #     e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
-            #     train_e_id_lst.append(e_id)
-            #     # 验证集
-            #     u = self.val_pred_g.edges(etype='rate')[0]
-            #     e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
-            #     val_e_id_lst.append(e_id)
-            #     # 测试集
-            #     u = self.test_pred_g.edges(etype='rate')[0]
-            #     e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
-            #     test_e_id_lst.append(e_id)
-            # self.metric.bins_id_lst = val_e_id_lst  # 验证集，测试集不用算metric
-            # print([len(lst) for lst in train_e_id_lst])
-            # print([len(lst) for lst in val_e_id_lst])
-            # print([len(lst) for lst in test_e_id_lst])
-        # print(u_num_lst)
-        # exit()
         side_info = self.get_side_info()
 
         # # drop graph
