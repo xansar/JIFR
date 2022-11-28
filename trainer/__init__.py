@@ -27,3 +27,4 @@ from .GraphRecTrainer import *
 
 # link
 from .AATrainer import *
+from .Node2VecTrainer import *
