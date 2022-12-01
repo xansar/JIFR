@@ -104,7 +104,7 @@ class TrustSVDTrainer(BaseTrainer):
             loss.backward()
             self.optimizer.step()
             return loss.item(), rate_loss.item(), reg_loss.item(), link_loss.item()
-        elif mode == 'evaluate':
+        elif mode == 'evaluate' or mode == 'test':
             with torch.no_grad():
                 message_g = inputs['message_g']
                 pred_g = inputs['pred_g']
