@@ -49,7 +49,7 @@ def setup_seed(seed):
 def parse_args():
     # Parses the arguments.
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('-c', '--config_pth', type=str, default='MF.ini',
+    parser.add_argument('-m', '--model', type=str, default='DiffnetPP',
                         help='Choose config')
     parser.add_argument('-v', '--visulize', type=bool, default=False,
                         help='whether to visulize train logs with tensorboard')
@@ -59,8 +59,8 @@ def parse_args():
 
 def get_config(args):
     config = MyConfigParser()
-    config_pth = args.config_pth
-    config.read('./config/' + config_pth, encoding='utf-8')
+    model = args.model
+    config.read('./config/' + model + '.ini', encoding='utf-8')
     config = config._sections
 
     if args.dataset is None:
