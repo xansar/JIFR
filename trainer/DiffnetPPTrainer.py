@@ -105,7 +105,7 @@ class DiffnetPPTrainer(BaseTrainer):
             loss.backward()
             self.optimizer.step()
             return loss.item()
-        elif mode == 'evaluate':
+        elif mode == 'evaluate' or mode == 'test':
             with torch.no_grad():
                 message_g = inputs['message_g']
                 pred_g = inputs['pred_g']
