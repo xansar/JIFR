@@ -170,12 +170,17 @@ class BaseTrainer:
                                             num_layers=gcn_layer_num, k=self.neg_num)
 
     def _get_loader(self, mode, g, eid_dict, batch_size, num_workers, is_shuffle, **other_args):
+        if self.device == torch.device('cuda'):
+            g = g.to(self.device)
+            eid_dict = {k: torch.tensor(v, device=self.device) for k, v in eid_dict.items()}
+            num_workers = 0
+
         if mode == 'train':
             budget = other_args['budget']
             # 训练时使用graphsaint采样子图
             sampler = SAINTSamplerForHetero(mode='node', budget=budget)
             dataloader = dgl.dataloading.DataLoader(
-                g, eid_dict, sampler, num_workers=num_workers, shuffle=is_shuffle, batch_size=batch_size,
+                g, eid_dict, sampler, num_workers=num_workers, shuffle=is_shuffle, batch_size=batch_size, device=self.device
             )
         elif mode == 'evaluate' or mode == 'test':
             # 测试时使用full neighbour采样全图
@@ -189,6 +194,7 @@ class BaseTrainer:
                 batch_size=batch_size,
                 shuffle=False,
                 drop_last=False,
+                device = self.device,
                 num_workers=num_workers)
         else:
             raise ValueError("Wrong Mode!!")
