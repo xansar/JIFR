@@ -8,6 +8,7 @@
 ------------      -------    --------    -----------
 2022/10/25 10:01   zxx      1.0         None
 """
+from .utils import *
 
 # without social
 from .MFTrainer import *
