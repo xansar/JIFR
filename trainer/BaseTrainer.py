@@ -40,6 +40,8 @@ BaseTrainer主要用来写一些通用的函数，比如打印config之类
 class BaseTrainer:
     def __init__(self, config):
         self.task = config['TRAIN']['task']
+        self.is_visulized = config['VISUALIZED']
+        self.is_log = config['LOG']
 
         self.config = config
         self.random_seed = eval(self.config['TRAIN']['random_seed'])
@@ -60,7 +62,7 @@ class BaseTrainer:
 
         self.bin_sep_lst = eval(config['METRIC'].get('bin_sep_lst', 'None'))
 
-        self.is_visulized = config['VISUALIZED']
+
         if self.is_visulized:
             tensor_board_dir = os.path.join(
                 log_dir, self.model_name, self.data_name, f'{self.task}_{self.random_seed}_{self.model_name}')
@@ -170,12 +172,17 @@ class BaseTrainer:
                                             num_layers=gcn_layer_num, k=self.neg_num)
 
     def _get_loader(self, mode, g, eid_dict, batch_size, num_workers, is_shuffle, **other_args):
+        if self.device == torch.device('cuda'):
+            g = g.to(self.device)
+            eid_dict = {k: torch.tensor(v, device=self.device) for k, v in eid_dict.items()}
+            num_workers = 0
+
         if mode == 'train':
             budget = other_args['budget']
             # 训练时使用graphsaint采样子图
             sampler = SAINTSamplerForHetero(mode='node', budget=budget)
             dataloader = dgl.dataloading.DataLoader(
-                g, eid_dict, sampler, num_workers=num_workers, shuffle=is_shuffle, batch_size=batch_size,
+                g, eid_dict, sampler, num_workers=num_workers, shuffle=is_shuffle, batch_size=batch_size, device=self.device
             )
         elif mode == 'evaluate' or mode == 'test':
             # 测试时使用full neighbour采样全图
@@ -189,6 +196,7 @@ class BaseTrainer:
                 batch_size=batch_size,
                 shuffle=False,
                 drop_last=False,
+                device = self.device,
                 num_workers=num_workers)
         else:
             raise ValueError("Wrong Mode!!")
@@ -252,7 +260,7 @@ class BaseTrainer:
         config_str = ''
         config_str += '=' * 10 + "Config" + '=' * 10 + '\n'
         for k, v in self.config.items():
-            if k == 'VISUALIZED':
+            if k == 'VISUALIZED' or k == 'LOG':
                 continue
             config_str += k + ': \n'
             for _k, _v in v.items():
@@ -308,8 +316,8 @@ class BaseTrainer:
 
         if self.is_visulized:
             self.vis_cnt += 1
-
-        self.metric.clear_metrics()
+        if is_val:
+            self.metric.clear_metrics()
         return metric_str
 
     def _log(self, str_, mode='a'):
@@ -472,7 +480,12 @@ class BaseTrainer:
 
     def wrap_step_loop(self, mode, data_loader: dgl.dataloading.DataLoader, side_info, loss_name):
         all_loss_lst = [0.0 for _ in range(len(loss_name))]
-        for i, graphs in tqdm(enumerate(data_loader), total=len(data_loader)):
+        if self.is_log:
+            bar_loader = tqdm(enumerate(data_loader), total=len(data_loader))
+        else:
+            bar_loader = enumerate(data_loader)
+
+        for i, graphs in bar_loader:
             loss_lst = self.step(
                 mode=mode, graphs=graphs,
                 side_info=side_info, cur_step=i)
@@ -565,8 +578,8 @@ class BaseTrainer:
         tqdm.write(self._log(metric_str))
         tqdm.write("=" * 10 + "TRAIN END" + "=" * 10)
 
-
-
+        test_hr10 = self.metric.metric_dict[self.task]['HR'][10]['value']
+        return test_hr10
 
 
 

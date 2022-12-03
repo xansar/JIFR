@@ -8,7 +8,7 @@
 ------------      -------    --------    -----------
 2022/10/26 16:22   zxx      1.0         None
 """
-
+import sys
 import os
 import json
 
@@ -21,6 +21,15 @@ import random
 from trainer import *
 
 from configparser import ConfigParser
+
+class HiddenPrints:
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.close()
+        sys.stdout = self._original_stdout
 
 class MyConfigParser(ConfigParser):
     def __init__(self, defaults=None):
@@ -40,7 +49,7 @@ def parse_args():
     # Parses the arguments.
     # MODEL
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('-m', '--model', type=str, default='DiffnetPP',
+    parser.add_argument('-m', '--model', type=str, default='MF',
                         help='Choose config')
     # DATA
     parser.add_argument('-d', '--dataset', type=str, default=None,
@@ -83,9 +92,13 @@ def parse_args():
     # other
     parser.add_argument('-v', '--visulize', type=bool, default=False,
                         help='whether to visulize train logs with tensorboard')
+    parser.add_argument('-l', '--log', type=bool, default=True,
+                        help='whether to print and save train logs (suggest to False when tune params)')
     return parser.parse_args()
 
-def get_config(args):
+def get_config():
+    args = parse_args()
+
     config = MyConfigParser()
     model = args.model
     config.read('./config/' + model + '.ini', encoding='utf-8')
@@ -112,8 +125,9 @@ def get_config(args):
         'random_seed': 'TRAIN'
     }
 
+    skip_show_arg_lst = ['model', 'visulize', 'log']
     for arg in vars(args):
-        if arg == 'model' or arg == 'visulize':
+        if arg in skip_show_arg_lst:
             continue
         else:
             arg_value = getattr(args, arg)
@@ -132,6 +146,7 @@ def get_config(args):
     config['MODEL'].update(data_info)
 
     config.update({'VISUALIZED': args.visulize})
+    config.update({'LOG': args.log})
     return config
 
 def get_data_info(data_name):
@@ -140,26 +155,24 @@ def get_data_info(data_name):
         data_info = json.load(f)
     return data_info
 
-def run():
-    args = parse_args()
-    config = get_config(args)
-
+def run(config):
     seed = eval(config['TRAIN']['random_seed'])
-
-    # 随机抽seed
-    # seed = random.randint(0, 145161)
-    # config['TRAIN']['random_seed'] = str(seed)
-
     setup_seed(seed)
 
     # trainer
     model_name = config['MODEL']['model_name']
     trainer = eval(model_name + 'Trainer')(config=config)
-    trainer.train()
+    if not config['LOG']:
+        with HiddenPrints():
+            metric_value = trainer.train()
+    else:
+        metric_value = trainer.train()
+    return metric_value
 
 
 if __name__ == '__main__':
-    run()
+    config = get_config()
+    run(config)
     # model_name = ['LightGCN', 'FusionLightGCN']
     # for n in model_name:
     #     config_pth = 'Ciao' + n + '.ini'

@@ -50,6 +50,7 @@ class MFModel(nn.Module):
 
     def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:
+            # 训练时，在图上训练，不需要区分block
             idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
             if self.task == 'Link':
                 etype = 'trust'
@@ -58,19 +59,22 @@ class MFModel(nn.Module):
                 etype = 'rate'
                 res_embedding = self.embedding(idx)
         else:
+            # 测试时需要注意block
             if self.task == 'Link':
                 res_embedding = self.embedding({'user': input_nodes})
                 etype = 'trust'
-                dst_user = pos_pred_g.dstnodes(ntype='user')
+                dst_user = messege_g[0].dstnodes(ntype='user')
                 res_embedding = res_embedding['user'][dst_user]
             elif self.task == 'Rate':
+                res_embedding = self.embedding(input_nodes)
                 etype = 'rate'
-                dst_user = pos_pred_g.dstnodes(ntype='user')
-                dst_item = pos_pred_g.dstnodes(ntype='item')
+                dst_user = messege_g[0].dstnodes(ntype='user')
+                dst_item = messege_g[0].dstnodes(ntype='item')
                 res_embedding = {
                     'user': res_embedding['user'][dst_user],
                     'item': res_embedding['item'][dst_item]
                 }
+
         pos_score = self.pred(pos_pred_g, res_embedding, etype)
         neg_score = self.pred(neg_pred_g, res_embedding, etype)
         return pos_score, neg_score
