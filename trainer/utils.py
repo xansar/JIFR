@@ -63,7 +63,7 @@ class SAINTSamplerForHetero(dgl.dataloading.SAINTSampler):
         # and then take the src node of the sampled edges. However, the number of edges
         # is typically much larger than the number of nodes.
 
-        sampled_nodes = {ntype: torch.empty(0, dtype=g.idtype) for ntype in g.ntypes}
+        sampled_nodes = {ntype: torch.empty(0, dtype=g.idtype, device=g.device) for ntype in g.ntypes}
         if self.prob is None:
             self.prob = {e_t: None for e_t in g.etypes}
         for etype in g.canonical_etypes:
@@ -84,7 +84,7 @@ class SAINTSamplerForHetero(dgl.dataloading.SAINTSampler):
 
     def edge_sampler(self, g):
         """Node ID sampler for random edge sampler"""
-        sampled_nodes = {ntype: torch.empty(0, dtype=g.idtype) for ntype in g.ntypes}
+        sampled_nodes = {ntype: torch.empty(0, dtype=g.idtype, device=g.device) for ntype in g.ntypes}
         if self.prob is None:
             self.prob = {e_t: None for e_t in g.etypes}
         for etype in g.canonical_etypes:
