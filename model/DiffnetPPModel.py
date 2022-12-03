@@ -54,37 +54,34 @@ class DiffusionLayer(nn.Module):
             # nn.BatchNorm1d(1),
             nn.LeakyReLU()
         )
-        #
-        # self.output_bn = nn.ModuleDict({
-        #     'user': nn.BatchNorm1d(self.embedding_size),
-        #     'item': nn.BatchNorm1d(self.embedding_size),
-        # })
 
     def forward(self, g, embedding):
+        src_user = g.srcnodes(ntype='user')
+        src_item = g.srcnodes(ntype='item')
+        dst_user = g.dstnodes(ntype='user')
+        dst_item = g.dstnodes(ntype='item')
         # item
-        src = {'user': embedding['user']}
-        dst = {'item': embedding['item']}
-        item_embedding = self.interest_diffusion_layer(g, (src, dst))['item'].squeeze(1) + embedding['item']    # 'item': embed
+        src = {'user': embedding['user'][src_user]}
+        dst = {'item': embedding['item'][dst_item]}
+        item_embedding = self.interest_diffusion_layer(g, (src, dst))['item'].squeeze(1) + dst['item']    # 'item': embed
 
         # user
         ## item->user
-        src = {'item': embedding['item']}
-        dst = {'user': embedding['user']}
+        src = {'item': embedding['item'][src_item]}
+        dst = {'user': embedding['user'][dst_user]}
         q_hair = self.interest_diffusion_layer(g, (src, dst))['user'].squeeze(1)   # interest
         ## user->user
-        src = {'user': embedding['user']}
-        dst = {'user': embedding['user']}
+        src = {'user': embedding['user'][src_user]}
+        dst = {'user': embedding['user'][dst_user]}
         p_hair = self.influence_diffusion_layer(g, (src, dst))['user'].squeeze(1)  # influence
         ## att
-        influence_att_score = self.att_score_influence(torch.cat([embedding['user'], p_hair], dim=1))
-        interest_att_score = self.att_score_interest(torch.cat([embedding['user'], q_hair], dim=1))
+        influence_att_score = self.att_score_influence(torch.cat([embedding['user'][dst_user], p_hair], dim=1))
+        interest_att_score = self.att_score_interest(torch.cat([embedding['user'][dst_user], q_hair], dim=1))
         gamma = torch.softmax(torch.cat([influence_att_score, interest_att_score], dim=1), dim=1)
-        user_embedding = gamma[:, 0].unsqueeze(1) * p_hair + gamma[:, 1].unsqueeze(1) * q_hair + embedding['user']
+        user_embedding = gamma[:, 0].unsqueeze(1) * p_hair + gamma[:, 1].unsqueeze(1) * q_hair + embedding['user'][dst_user]
         return {
             'user': user_embedding,
             'item': item_embedding
-            # 'user': self.output_bn['user'](user_embedding),
-            # 'item': self.output_bn['item'](item_embedding)
         }
 
 class ActivatedHeteroLinear(nn.Module):
@@ -134,11 +131,10 @@ class DiffnetPPModel(nn.Module):
         self.gcn_layer_num = eval(config['MODEL']['gcn_layer_num'])
         self.num_heads = eval(config['MODEL']['num_heads'])
         self.task = config['TRAIN']['task']
-        self.pred_user_num = eval(config['MODEL']['pred_user_num'])
+        self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
-        self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.embedding = dglnn.HeteroEmbedding(
-            {'user': self.total_user_num, 'item': self.item_num}, self.embedding_size
+            {'user': self.user_num, 'item': self.item_num}, self.embedding_size
         )
         input_f_size = 2 * self.embedding_size if is_feature else self.embedding_size
 
@@ -164,21 +160,36 @@ class DiffnetPPModel(nn.Module):
             elif isinstance(m, nn.Embedding):
                 nn.init.normal_(m.weight, mean=0, std=0.01)
 
-    def forward(self, messege_g, pos_pred_g, neg_pred_g):
-        idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
-        # res_embedding = self.fusion_layer(self.embedding(idx))
-        res_embedding = self.embedding(idx)
-        for i, layer in enumerate(self.diffusion_layers):
-            if i == 0:
-                embeddings = layer(messege_g, res_embedding)
-            else:
-                embeddings = layer(messege_g, embeddings)
-            # print(embeddings)
-            # print(pref_embedding['user'].shape, embeddings['user'].shape)
-            # print(pref_embedding['item'].shape, embeddings['item'].shape)
-            res_embedding['user'] = torch.cat([res_embedding['user'], embeddings['user']], dim=1)
-            res_embedding['item'] = torch.cat([res_embedding['item'], embeddings['item']], dim=1)
-
+    def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
+        if input_nodes is None:
+            idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+            # res_embedding = self.fusion_layer(self.embedding(idx))
+            res_embedding = self.embedding(idx)
+            for i, layer in enumerate(self.diffusion_layers):
+                if i == 0:
+                    embeddings = layer(messege_g, res_embedding)
+                else:
+                    embeddings = layer(messege_g, embeddings)
+                res_embedding['user'] = torch.cat([res_embedding['user'], embeddings['user']], dim=1)
+                res_embedding['item'] = torch.cat([res_embedding['item'], embeddings['item']], dim=1)
+        else:
+            original_embedding = self.embedding(input_nodes)
+            dst_user = pos_pred_g.dstnodes(ntype='user')
+            dst_item = pos_pred_g.dstnodes(ntype='item')
+            res_embedding = {
+                'user': original_embedding['user'][dst_user],
+                'item': original_embedding['item'][dst_item]
+            }
+            for i in range(1, len(messege_g) + 1):
+                blocks = messege_g[-i:]
+                for j in range(i):
+                    layer = self.diffusion_layers[j]
+                    if j == 0:
+                        embeddings = layer(blocks[j], original_embedding)
+                    else:
+                        embeddings = layer(blocks[j], embeddings)
+                res_embedding['user'] = torch.cat([res_embedding['user'], embeddings['user']], dim=1)
+                res_embedding['item'] = torch.cat([res_embedding['item'], embeddings['item']], dim=1)
         pos_score = self.pred(pos_pred_g, res_embedding, 'rate')
         neg_score = self.pred(neg_pred_g, res_embedding, 'rate')
         return pos_score, neg_score
