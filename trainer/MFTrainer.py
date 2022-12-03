@@ -25,4 +25,4 @@ class MFTrainer(BaseTrainer):
 
     def train(self):
         loss_name = ['Loss']
-        self._train(loss_name)
+        return self._train(loss_name)

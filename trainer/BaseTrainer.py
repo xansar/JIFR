@@ -40,6 +40,8 @@ BaseTrainer主要用来写一些通用的函数，比如打印config之类
 class BaseTrainer:
     def __init__(self, config):
         self.task = config['TRAIN']['task']
+        self.is_visulized = config['VISUALIZED']
+        self.is_log = config['LOG']
 
         self.config = config
         self.random_seed = eval(self.config['TRAIN']['random_seed'])
@@ -60,7 +62,7 @@ class BaseTrainer:
 
         self.bin_sep_lst = eval(config['METRIC'].get('bin_sep_lst', 'None'))
 
-        self.is_visulized = config['VISUALIZED']
+
         if self.is_visulized:
             tensor_board_dir = os.path.join(
                 log_dir, self.model_name, self.data_name, f'{self.task}_{self.random_seed}_{self.model_name}')
@@ -258,7 +260,7 @@ class BaseTrainer:
         config_str = ''
         config_str += '=' * 10 + "Config" + '=' * 10 + '\n'
         for k, v in self.config.items():
-            if k == 'VISUALIZED':
+            if k == 'VISUALIZED' or k == 'LOG':
                 continue
             config_str += k + ': \n'
             for _k, _v in v.items():
@@ -314,8 +316,8 @@ class BaseTrainer:
 
         if self.is_visulized:
             self.vis_cnt += 1
-
-        self.metric.clear_metrics()
+        if is_val:
+            self.metric.clear_metrics()
         return metric_str
 
     def _log(self, str_, mode='a'):
@@ -478,7 +480,12 @@ class BaseTrainer:
 
     def wrap_step_loop(self, mode, data_loader: dgl.dataloading.DataLoader, side_info, loss_name):
         all_loss_lst = [0.0 for _ in range(len(loss_name))]
-        for i, graphs in tqdm(enumerate(data_loader), total=len(data_loader)):
+        if self.is_log:
+            bar_loader = tqdm(enumerate(data_loader), total=len(data_loader))
+        else:
+            bar_loader = enumerate(data_loader)
+
+        for i, graphs in bar_loader:
             loss_lst = self.step(
                 mode=mode, graphs=graphs,
                 side_info=side_info, cur_step=i)
@@ -571,8 +578,8 @@ class BaseTrainer:
         tqdm.write(self._log(metric_str))
         tqdm.write("=" * 10 + "TRAIN END" + "=" * 10)
 
-
-
+        test_hr10 = self.metric.metric_dict[self.task]['HR'][10]['value']
+        return test_hr10
 
 
 
