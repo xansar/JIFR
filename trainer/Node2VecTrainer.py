@@ -40,8 +40,7 @@ class Node2VecTrainer(BaseTrainer):
         self.val_size = dataset.val_size
 
         # 读取训练有关配置
-        self.user_num = eval(config['MODEL']['pred_user_num'])
-        self.total_user_num = eval(config['MODEL']['total_user_num'])
+        self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.neg_num = eval(config['DATA']['neg_num'])
         self.train_neg_num = eval(config['DATA']['train_neg_num'])
@@ -84,7 +83,7 @@ class Node2VecTrainer(BaseTrainer):
             ('user', 'trusted-by', 'user'): range(self.train_size + self.val_size, self.g.num_edges(('user', 'trusted-by', 'user')))
         }
         test_pred_g = dgl.edge_subgraph(self.g, test_edges, relabel_nodes=False)
-        # val_g = dgl.edge_subgraph(self.g, range(self.train_size + self.val_size), relabel_nodes=False)
+        # val_g = dgl.edge_subgraph(self.g, range(self.train_rate_size + self.val_size), relabel_nodes=False)
 
         return train_g, val_pred_g, test_pred_g
 
@@ -100,7 +99,7 @@ class Node2VecTrainer(BaseTrainer):
             Node2vec training data loader
         """
         return DataLoader(
-            torch.arange(self.total_user_num),
+            torch.arange(self.user_num),
             batch_size=batch_size,
             shuffle=True,
             collate_fn=self.sample,
@@ -126,7 +125,7 @@ class Node2VecTrainer(BaseTrainer):
         # negative
         neg_batch = batch.repeat(self.train_neg_num)
         neg_traces = torch.randint(
-            self.total_user_num, (neg_batch.size(0), self.walk_length)
+            self.user_num, (neg_batch.size(0), self.walk_length)
         )
         neg_traces = torch.cat([neg_batch.view(-1, 1), neg_traces], dim=-1)
         neg_traces = neg_traces.unfold(1, self.window_size, 1)  # rolling window
@@ -203,7 +202,7 @@ class Node2VecTrainer(BaseTrainer):
                 self.bins_id_lst = train_e_id_lst
 
             all_loss_lst = [0.0 for _ in range(len(loss_name))]
-            for i, (pos_traces, neg_traces) in tqdm(enumerate(loader), total=int(self.total_user_num / self.batch_size) + 1):
+            for i, (pos_traces, neg_traces) in tqdm(enumerate(loader), total=int(self.user_num / self.batch_size) + 1):
                 loss_lst = self.step(mode='train', pos_traces=pos_traces, neg_traces=neg_traces, cur_step=i)
                 for j in range(len(loss_name)):
                     if len(loss_name) == 1:

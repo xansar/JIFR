@@ -18,19 +18,9 @@ import numpy as np
 import argparse
 import random
 
-from dataset import *
-from metric import *
-from model import *
 from trainer import *
 
 from configparser import ConfigParser
-
-CommonModel = ['MF', 'AA', 'Node2Vec']
-GCNModel = ['LightGCN', 'TrustSVD', 'SVDPP', 'Sorec', 'MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec', 'SocialMF']
-
-use_common_datset = ['LightGCN', 'MF']
-use_social_dataset = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec', 'AA', 'Node2Vec']
-use_directed_social_dataset = ['TrustSVD', 'SVDPP', 'Sorec', 'SocialMF']
 
 class MyConfigParser(ConfigParser):
     def __init__(self, defaults=None):
@@ -48,13 +38,51 @@ def setup_seed(seed):
 
 def parse_args():
     # Parses the arguments.
+    # MODEL
     parser = argparse.ArgumentParser(description="Run Model.")
     parser.add_argument('-m', '--model', type=str, default='DiffnetPP',
                         help='Choose config')
-    parser.add_argument('-v', '--visulize', type=bool, default=False,
-                        help='whether to visulize train logs with tensorboard')
+    # DATA
     parser.add_argument('-d', '--dataset', type=str, default=None,
                         help='choose dataset')
+    parser.add_argument('-tng', '--train_neg_num', type=int, default=None,
+                        help='train neg num')
+    parser.add_argument('-ng', '--neg_num', type=int, default=None,
+                        help='eval neg num')
+    parser.add_argument('-tb', '--train_batch_size', type=int, default=None,
+                        help='train batch size')
+    parser.add_argument('-vb', '--eval_batch_size', type=int, default=None,
+                        help='eval batch size')
+    parser.add_argument('-nw', '--num_workers', type=int, default=None,
+                        help='num workers')
+
+    # OPTIM
+    parser.add_argument('-lr', '--learning_rate', type=float, default=None,
+                        help='mlp learning rate')
+    parser.add_argument('-elr', '--embedding_learning_rate', type=float, default=None,
+                        help='embed learning rate')
+    parser.add_argument('-w', '--weight_decay', type=float, default=None,
+                        help='mlp weight decay')
+    parser.add_argument('-ew', '--embedding_weight_decay', type=float, default=None,
+                        help='embed weight_decay')
+    parser.add_argument('-T', '--T_0', type=int, default=None,
+                        help='lr scheduler param T_0')
+    parser.add_argument('-Tm', '--T_m', type=int, default=None,
+                        help='lr scheduler param T_m')
+
+    # TRAIN
+    parser.add_argument('-t', '--task', type=str, default=None,
+                        help='choose task')
+    parser.add_argument('-e', '--epoch', type=int, default=None,
+                        help='epoch')
+    parser.add_argument('-estp', '--eval_step', type=int, default=None,
+                        help='eval step')
+    parser.add_argument('-r', '--random_seed', type=int, default=None,
+                        help='random seed')
+
+    # other
+    parser.add_argument('-v', '--visulize', type=bool, default=False,
+                        help='whether to visulize train logs with tensorboard')
     return parser.parse_args()
 
 def get_config(args):
@@ -63,10 +91,42 @@ def get_config(args):
     config.read('./config/' + model + '.ini', encoding='utf-8')
     config = config._sections
 
+    arg_class = {
+        'dataset': 'DATA',
+        'train_neg_num': 'DATA',
+        'neg_num': 'DATA',
+        'train_batch_size': 'DATA',
+        'eval_batch_size': 'DATA',
+
+        'T_0': 'OPTIM',
+        'T_mult': 'OPTIM',
+        'early_stop_num': 'OPTIM',
+        'embedding_learning_rate': 'OPTIM',
+        'learning_rate': 'OPTIM',
+        'embedding_weight_decay': 'OPTIM',
+        'weight_decay': 'OPTIM',
+
+        'task': 'TRAIN',
+        'epoch': 'TRAIN',
+        'eval_step': 'TRAIN',
+        'random_seed': 'TRAIN'
+    }
+
+    for arg in vars(args):
+        if arg == 'model' or arg == 'visulize':
+            continue
+        else:
+            arg_value = getattr(args, arg)
+            if arg_value is not None:
+                print(f'cmd change arg {arg}: config_value-{config[arg_class[arg]][arg]}, new_value-{str(arg_value)}')
+                config[arg_class[arg]][arg] = str(arg_value)
+
+
     if args.dataset is None:
         data_name = config['DATA']['data_name']
     else:
         data_name = args.dataset
+
     data_info = get_data_info(data_name)
     config['DATA']['data_name'] = data_name
     config['MODEL'].update(data_info)
@@ -92,68 +152,9 @@ def run():
 
     setup_seed(seed)
 
-    model_name = config['MODEL']['model_name']
-    task = config['TRAIN']['task']
-
-    if model_name in use_common_datset:
-        dataset = DGLRecDataset(config, use_social=False)
-    else:
-        if model_name in use_social_dataset:
-            dataset = DGLRecDataset(config, use_social=True, directed=False)
-        elif model_name in use_directed_social_dataset:
-            dataset = DGLRecDataset(config, use_social=True, directed=True)
-        else:
-            raise ValueError("Wrong Model Name!!!")
-
-    if model_name in CommonModel:
-        model = eval(model_name + 'Model')(config)
-    elif model_name in GCNModel:
-        etype = dataset[0].etypes
-        model = eval(model_name + 'Model')(config, etype)
-    else:
-        raise ValueError("Wrong Model Name!!!")
-    # model.apply(weight_init)
-
-    # optimizer
-    optimizer_name = 'torch.optim.' + config['OPTIM']['optimizer']
-    if 'embedding_weight_decay' in config['OPTIM'].keys():
-        optimizer_grouped_params = [
-            {'params': [p for n, p in model.named_parameters() if 'embeds' in n],
-             'lr': eval(config['OPTIM']['embedding_learning_rate']),
-             'weight_decay': eval(config['OPTIM']['embedding_weight_decay'])
-             },
-            {'params': [p for n, p in model.named_parameters() if 'embeds' not in n],
-             'lr': eval(config['OPTIM']['learning_rate']),
-             'weight_decay': eval(config['OPTIM']['weight_decay'])
-             }
-        ]
-        optimizer = eval(optimizer_name)(params=optimizer_grouped_params)
-    else:
-        lr = eval(config['OPTIM']['learning_rate'])
-        weight_decay = eval(config['OPTIM']['weight_decay'])
-        optimizer = eval(optimizer_name)(lr=lr, params=model.parameters(), weight_decay=weight_decay)
-
-
-    lr_scheduler_name = 'torch.optim.lr_scheduler.' + config['OPTIM']['lr_scheduler']
-    T_0 = eval(config['OPTIM']['T_0'])  # 学习率第一次重启的epoch数
-    T_mult = eval(config['OPTIM']['T_mult'])    # 学习率衰减epoch数变化倍率
-    lr_scheduler = eval(lr_scheduler_name)(optimizer, T_0=T_0, T_mult=T_mult, verbose=True)
-    # loss func
-    loss_name = config['LOSS']['loss_name']
-    loss_func = eval(loss_name)(reduction='mean')
-    # metric
-
-    metric = BaseMetric(config)
     # trainer
-    trainer = eval(model_name + 'Trainer')(
-        model=model,
-        loss_func=loss_func,
-        optimizer=optimizer,
-        lr_scheduler=lr_scheduler,
-        metric=metric,
-        dataset=dataset,
-        config=config
-    )
+    model_name = config['MODEL']['model_name']
+    trainer = eval(model_name + 'Trainer')(config=config)
     trainer.train()
 
 

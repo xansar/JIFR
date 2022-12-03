@@ -32,23 +32,22 @@ class SocialMFModel(nn.Module):
         self.config = config
         self.embedding_size = eval(config['MODEL']['embedding_size'])
         self.task = config['TRAIN']['task']
-        self.pred_user_num = eval(config['MODEL']['pred_user_num'])
+        self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
-        self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.lamda = eval(config['OPTIM']['lamda'])
         self.lamda_t = eval(config['OPTIM']['lamda_t'])
         global_bias = eval(config['MODEL']['global_bias'])
 
         self.p_q_embedding = dglnn.HeteroEmbedding(
-            {'user': self.total_user_num, 'item': self.item_num}, self.embedding_size
+            {'user': self.user_num, 'item': self.item_num}, self.embedding_size
         )
         self.y_w_embedding = dglnn.HeteroEmbedding(
-            {'user': self.total_user_num, 'item': self.item_num}, self.embedding_size
+            {'user': self.user_num, 'item': self.item_num}, self.embedding_size
         )
         self.bias = dglnn.HeteroEmbedding(
-            {'user': self.total_user_num, 'item': self.item_num}, 1
+            {'user': self.user_num, 'item': self.item_num}, 1
         )
-        self.u_bias = nn.Embedding(self.total_user_num, 1)
+        self.u_bias = nn.Embedding(self.user_num, 1)
         self.i_bias = nn.Embedding(self.item_num, 1)
         self.global_bias = nn.Parameter(torch.tensor(global_bias), requires_grad=False)
         self.pred = HeteroDotProductPredictor()

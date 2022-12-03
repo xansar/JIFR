@@ -126,8 +126,7 @@ def relabel(data_name):
 
     # 保存
     user_idx_dict = {
-        'pred_user_max': pred_user_max,
-        'total_user_num': len(user_new_idx2raw_idx),
+        'user_num': len(user_new_idx2raw_idx),
         'raw2new': user_raw_idx2new_idx,
         'new2raw': user_new_idx2raw_idx
     }
@@ -165,8 +164,7 @@ def relabel(data_name):
     new_link_df['user2'] = new_link_df['user2'].apply(lambda x: user_raw_idx2new_idx[x])
     new_link_df.to_csv(f'../{data_name}/link_data.csv', index=False, header=True)
     data_info = {
-        'pred_user_num': pred_user_max,
-        'total_user_num': len(user_new_idx2raw_idx),
+        'user_num': len(user_new_idx2raw_idx),
         'item_num': len(item_new_idx2raw_idx),
     }
     with open(f'../{data_name}/behavior_data/data_info.json', 'w') as f:

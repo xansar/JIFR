@@ -33,11 +33,10 @@ class LightGCNModel(nn.Module):
         self.embedding_size = eval(config['MODEL']['embedding_size'])
         self.layer_num = eval(config['MODEL']['gcn_layer_num'])
         self.task = config['TRAIN']['task']
-        self.pred_user_num = eval(config['MODEL']['pred_user_num'])
+        self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
-        self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.embedding = dglnn.HeteroEmbedding(
-            {'user': self.pred_user_num, 'item': self.item_num}, self.embedding_size
+            {'user': self.user_num, 'item': self.item_num}, self.embedding_size
         )
         self.layers = nn.ModuleList()
         for i in range(self.layer_num):

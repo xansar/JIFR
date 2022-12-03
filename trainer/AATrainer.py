@@ -43,8 +43,7 @@ class AATrainer(BaseTrainer):
         self.val_link_size = dataset.val_link_size
 
         # 读取训练有关配置
-        self.user_num = eval(config['MODEL']['pred_user_num'])
-        self.total_user_num = eval(config['MODEL']['total_user_num'])
+        self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.neg_num = eval(config['DATA']['neg_num'])
         self.train_neg_num = eval(config['DATA']['train_neg_num'])
@@ -65,29 +64,29 @@ class AATrainer(BaseTrainer):
 
     def get_graphs(self):
         train_edges = {
-            # ('user', 'rate', 'item'): range(self.train_size),
-            # ('item', 'rated-by', 'user'): range(self.train_size),
+            # ('user', 'rate', 'item'): range(self.train_rate_size),
+            # ('item', 'rated-by', 'user'): range(self.train_rate_size),
             ('user', 'trust', 'user'): range(self.train_link_size),
             ('user', 'trusted-by', 'user'): range(self.train_link_size)
         }
         train_g = dgl.edge_subgraph(self.g, train_edges, relabel_nodes=False)
 
         val_edges = {
-            # ('user', 'rate', 'item'): range(self.train_size, self.train_size + self.val_size),
-            # ('item', 'rated-by', 'user'): range(self.train_size, self.train_size + self.val_size),
+            # ('user', 'rate', 'item'): range(self.train_rate_size, self.train_rate_size + self.val_size),
+            # ('item', 'rated-by', 'user'): range(self.train_rate_size, self.train_rate_size + self.val_size),
             ('user', 'trust', 'user'): range(self.train_link_size, self.train_link_size + self.val_link_size),
             ('user', 'trusted-by', 'user'): range(self.train_link_size, self.train_link_size + self.val_link_size)
         }
         val_pred_g = dgl.edge_subgraph(self.g, val_edges, relabel_nodes=False)
 
         test_edges = {
-            # ('user', 'rate', 'item'): range(self.train_size + self.val_size, self.g.num_edges(('user', 'rate', 'item'))),
-            # ('item', 'rated-by', 'user'): range(self.train_size + self.val_size, self.g.num_edges(('item', 'rated-by', 'user'))),
+            # ('user', 'rate', 'item'): range(self.train_rate_size + self.val_size, self.g.num_edges(('user', 'rate', 'item'))),
+            # ('item', 'rated-by', 'user'): range(self.train_rate_size + self.val_size, self.g.num_edges(('item', 'rated-by', 'user'))),
             ('user', 'trust', 'user'): range(self.train_link_size + self.val_link_size, self.g.num_edges(('user', 'trusted-by', 'user'))),
             ('user', 'trusted-by', 'user'): range(self.train_link_size + self.val_link_size, self.g.num_edges(('user', 'trusted-by', 'user')))
         }
         test_pred_g = dgl.edge_subgraph(self.g, test_edges, relabel_nodes=False)
-        # val_g = dgl.edge_subgraph(self.g, range(self.train_size + self.val_size), relabel_nodes=False)
+        # val_g = dgl.edge_subgraph(self.g, range(self.train_rate_size + self.val_size), relabel_nodes=False)
 
         return train_g, val_pred_g, test_pred_g
 

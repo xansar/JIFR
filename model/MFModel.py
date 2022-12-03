@@ -27,16 +27,15 @@ class HeteroDotProductPredictor(nn.Module):
 
 
 class MFModel(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, etype=None):
         super(MFModel, self).__init__()
         self.config = config
         self.embedding_size = eval(config['MODEL']['embedding_size'])
         self.task = config['TRAIN']['task']
-        self.pred_user_num = eval(config['MODEL']['pred_user_num'])
+        self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
-        self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.embedding = dglnn.HeteroEmbedding(
-            {'user': self.pred_user_num, 'item': self.item_num}, self.embedding_size
+            {'user': self.user_num, 'item': self.item_num}, self.embedding_size
         )
         self.pred = HeteroDotProductPredictor()
         self.init_weights()
@@ -49,15 +48,29 @@ class MFModel(nn.Module):
             elif isinstance(m, nn.Embedding):
                 nn.init.normal_(m.weight, mean=0, std=0.01)
 
-    def forward(self, messege_g, pos_pred_g, neg_pred_g):
-        idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
-        if self.task == 'Link':
-            etype = 'trust'
-            res_embedding = self.embedding(idx)['user']
-        elif self.task == 'Rate':
-            etype = 'rate'
-            res_embedding = self.embedding(idx)
-
+    def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
+        if input_nodes is None:
+            idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+            if self.task == 'Link':
+                etype = 'trust'
+                res_embedding = self.embedding(idx)['user']
+            elif self.task == 'Rate':
+                etype = 'rate'
+                res_embedding = self.embedding(idx)
+        else:
+            if self.task == 'Link':
+                res_embedding = self.embedding({'user': input_nodes})
+                etype = 'trust'
+                dst_user = pos_pred_g.dstnodes(ntype='user')
+                res_embedding = res_embedding['user'][dst_user]
+            elif self.task == 'Rate':
+                etype = 'rate'
+                dst_user = pos_pred_g.dstnodes(ntype='user')
+                dst_item = pos_pred_g.dstnodes(ntype='item')
+                res_embedding = {
+                    'user': res_embedding['user'][dst_user],
+                    'item': res_embedding['item'][dst_item]
+                }
         pos_score = self.pred(pos_pred_g, res_embedding, etype)
         neg_score = self.pred(neg_pred_g, res_embedding, etype)
         return pos_score, neg_score

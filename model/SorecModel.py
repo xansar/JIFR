@@ -32,21 +32,20 @@ class SorecModel(nn.Module):
         self.config = config
         self.embedding_size = eval(config['MODEL']['embedding_size'])
         self.task = config['TRAIN']['task']
-        self.pred_user_num = eval(config['MODEL']['pred_user_num'])
+        self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
-        self.total_user_num = eval(config['MODEL']['total_user_num'])
         self.lamda = eval(config['OPTIM']['lamda'])
         self.lamda_t = eval(config['OPTIM']['lamda_t'])
         global_bias = eval(config['MODEL']['global_bias'])
 
         self.p_q_embedding = dglnn.HeteroEmbedding(
-            {'user': self.total_user_num, 'item': self.item_num}, self.embedding_size
+            {'user': self.user_num, 'item': self.item_num}, self.embedding_size
         )
         self.y_w_embedding = dglnn.HeteroEmbedding(
-            {'user': self.total_user_num, 'item': self.item_num}, self.embedding_size
+            {'user': self.user_num, 'item': self.item_num}, self.embedding_size
         )
         self.bias = dglnn.HeteroEmbedding(
-            {'user': self.total_user_num, 'item': self.item_num}, 1
+            {'user': self.user_num, 'item': self.item_num}, 1
         )
         self.y_gcn = dglnn.HeteroGraphConv({
             rel: dglnn.GraphConv(self.embedding_size, self.embedding_size, norm='left', weight=False, bias=False)
@@ -56,7 +55,7 @@ class SorecModel(nn.Module):
             rel: dglnn.GraphConv(self.embedding_size, self.embedding_size, norm='left', weight=False, bias=False)
             for rel in rel_names
         })
-        self.u_bias = nn.Embedding(self.total_user_num, 1)
+        self.u_bias = nn.Embedding(self.user_num, 1)
         self.i_bias = nn.Embedding(self.item_num, 1)
         self.global_bias = nn.Parameter(torch.tensor(global_bias), requires_grad=False)
         self.pred = HeteroDotProductPredictor()
@@ -69,9 +68,9 @@ class SorecModel(nn.Module):
         y_w = self.y_w_embedding(idx)  # {'user': w, 'item': y}
         p_q = self.p_q_embedding(idx)  # {'user': p, 'item': q}
         normed_y = self.y_gcn(messege_g,
-                              ({'item': y_w['item']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
+                              ({'item': y_w['item']}, {'user': p_q['user']}))  # 'user': user_num * embedsize
         normed_w = self.w_gcn(messege_g,
-                              ({'user': y_w['user']}, {'user': p_q['user']}))  # 'user': total_user_num * embedsize
+                              ({'user': y_w['user']}, {'user': p_q['user']}))  # 'user': user_num * embedsize
         bias = self.bias(idx)
         res_embedding = {'user':p_q['user'], 'item': p_q['item']}
 

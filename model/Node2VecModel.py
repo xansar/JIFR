@@ -61,8 +61,7 @@ class Node2VecModel(nn.Module):
         super(Node2VecModel, self).__init__()
 
         self.config = config
-        self.pred_user_num = eval(config['MODEL']['pred_user_num'])
-        self.total_user_num = eval(config['MODEL']['total_user_num'])
+        self.user_num = eval(config['MODEL']['user_num'])
         self.embedding_size = eval(config['MODEL']['embedding_size'])
         self.p = eval(config['MODEL']['p'])
         self.q = eval(config['MODEL']['q'])
@@ -76,7 +75,7 @@ class Node2VecModel(nn.Module):
         # else:
         #     self.prob = None
 
-        self.embedding = nn.Embedding(self.total_user_num, self.embedding_size)
+        self.embedding = nn.Embedding(self.user_num, self.embedding_size)
         self.pred = HeteroDotProductPredictor()
         self.init_weights()
 

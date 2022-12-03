@@ -34,12 +34,11 @@ class LightGCNTrainer(BaseTrainer):
         # 读取数据
         self.dataset = dataset
         self.g = dataset[0]
-        self.train_size = dataset.train_size
-        self.val_size = dataset.val_size
+        self.train_rate_size = dataset.train_rate_size
+        self.val_rate_size = dataset.val_rate_size
 
         # 读取训练有关配置
-        self.user_num = eval(config['MODEL']['pred_user_num'])
-        self.total_user_num = eval(config['MODEL']['total_user_num'])
+        self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
         self.neg_num = eval(config['DATA']['neg_num'])
         self.train_neg_num = eval(config['DATA']['train_neg_num'])
@@ -60,18 +59,18 @@ class LightGCNTrainer(BaseTrainer):
 
     def get_graphs(self):
         train_edges = {
-            meta_etype: range(self.train_size) for meta_etype in self.g.canonical_etypes
+            meta_etype: range(self.train_rate_size) for meta_etype in self.g.canonical_etypes
         }
         train_g = dgl.edge_subgraph(self.g, train_edges, relabel_nodes=False)
         val_edges = {
-            meta_etype: range(self.train_size, self.train_size + self.val_size) for meta_etype in self.g.canonical_etypes
+            meta_etype: range(self.train_rate_size, self.train_rate_size + self.val_rate_size) for meta_etype in self.g.canonical_etypes
         }
         val_pred_g = dgl.edge_subgraph(self.g, val_edges, relabel_nodes=False)
         test_edges = {
-            meta_etype: range(self.train_size + self.val_size, self.g.num_edges(meta_etype)) for meta_etype in self.g.canonical_etypes
+            meta_etype: range(self.train_rate_size + self.val_rate_size, self.g.num_edges(meta_etype)) for meta_etype in self.g.canonical_etypes
         }
         test_pred_g = dgl.edge_subgraph(self.g, test_edges, relabel_nodes=False)
-        # val_g = dgl.edge_subgraph(self.g, range(self.train_size + self.val_size), relabel_nodes=False)
+        # val_g = dgl.edge_subgraph(self.g, range(self.train_rate_size + self.val_rate_size), relabel_nodes=False)
 
         return train_g, val_pred_g, test_pred_g
 
