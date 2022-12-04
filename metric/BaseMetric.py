@@ -23,7 +23,9 @@ class BaseMetric:
         self.early_stop_num = eval(config['OPTIM']['early_stop_num'])
         self.early_stop_cnt = 0
         self.metric_cnt = 0
+        self.iter_step = 0
         self.eval_step = eval(config['TRAIN']['eval_step'])
+        self.batch_size = eval(config['DATA']['eval_batch_size'])
         self.warm_epoch = eval(config['TRAIN']['warm_epoch'])
         self.early_stop_last = -1
 
@@ -131,17 +133,28 @@ class BaseMetric:
             # target_idx位置就是正样本
             ## total hit
             hit = (topk_id == target_idx).count_nonzero(dim=1).clamp(max=1)
-
+            # 下面是看分组的metric，思路就是将该组对应的边取出来计算metric
             if self.bin_sep_lst is not None:
                 ## bin hit
                 for i in range(len(self.bins_id_lst)):
-                    id_lst = self.bins_id_lst[i]
-                    hit_bin = hit[id_lst].sum()
-                    self.metric_dict[task]['HR'][k]['bin_value'][i] = hit_bin.item()
-                    self.metric_dict[task]['HR'][k]['bin_cnt'][i] = id_lst.shape[0]
+                    id_lst = self.bins_id_lst[i]    # 每一个id_lst都是一个tensor
+                    # 使用全图的情况：hit_bin = hit[id_lst].sum()
 
-            self.metric_dict[task]['HR'][k]['value'] = hit.sum().item()
-            self.metric_dict[task]['HR'][k]['cnt'] = total_pred.shape[0]
+                    # batch 的情况
+                    # 这一批次的eid范围是 self.iter_step * batch_size: (self.iter_step + 1) * batch_size
+                    # 因此需要把id_lst中这一部分的eid取出来，左闭右开
+                    left_eid = self.iter_step * self.batch_size
+                    right_eid = (self.iter_step + 1) * self.batch_size
+                    id_lst = torch.masked_select(id_lst, (id_lst >= left_eid) & (id_lst < right_eid))
+                    # 将原始的边id映射到当前batch
+                    id_lst = id_lst - left_eid
+
+                    hit_bin = hit[id_lst].sum()
+                    self.metric_dict[task]['HR'][k]['bin_value'][i] += hit_bin.item()
+                    self.metric_dict[task]['HR'][k]['bin_cnt'][i] += id_lst.shape[0]
+
+            self.metric_dict[task]['HR'][k]['value'] += hit.sum().item()
+            self.metric_dict[task]['HR'][k]['cnt'] += total_pred.shape[0]
 
     def _compute_nDCG(self, total_pred, target_idx, task):
         for k in self.ks:
@@ -154,9 +167,18 @@ class BaseMetric:
             if self.bin_sep_lst is not None:
                 for i in range(len(self.bins_id_lst)):
                     id_lst = self.bins_id_lst[i]
-                    nDCG_bin = nDCG[id_lst].sum()
-                    self.metric_dict[task]['nDCG'][k]['bin_value'][i] = nDCG_bin.item()
-                    self.metric_dict[task]['nDCG'][k]['bin_cnt'][i] = id_lst.shape[0]
+                    # batch 的情况
+                    # 这一批次的eid范围是 self.iter_step * batch_size: (self.iter_step + 1) * batch_size
+                    # 因此需要把id_lst中这一部分的eid取出来，左闭右开
+                    left_eid = self.iter_step * self.batch_size
+                    right_eid = (self.iter_step + 1) * self.batch_size
+                    id_lst = torch.masked_select(id_lst, (id_lst >= left_eid) & (id_lst < right_eid))
+                    # 将原始的边id映射到当前batch
+                    id_lst = id_lst - left_eid
 
-            self.metric_dict[task]['nDCG'][k]['value'] = nDCG.sum().item()
-            self.metric_dict[task]['nDCG'][k]['cnt'] = total_pred.shape[0]
+                    nDCG_bin = nDCG[id_lst].sum()
+                    self.metric_dict[task]['nDCG'][k]['bin_value'][i] += nDCG_bin.item()
+                    self.metric_dict[task]['nDCG'][k]['bin_cnt'][i] += id_lst.shape[0]
+
+            self.metric_dict[task]['nDCG'][k]['value'] += nDCG.sum().item()
+            self.metric_dict[task]['nDCG'][k]['cnt'] += total_pred.shape[0]
