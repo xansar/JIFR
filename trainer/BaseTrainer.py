@@ -102,21 +102,21 @@ class BaseTrainer:
         config = self.config
         # optimizer
         optimizer_name = 'torch.optim.' + config['OPTIM']['optimizer']
-        if 'embedding_weight_decay' in config['OPTIM'].keys():
+        if 'mlp_weight_decay' in config['OPTIM'].keys():
             optimizer_grouped_params = [
                 {'params': [p for n, p in self.model.named_parameters() if 'embeds' in n],
                  'lr': eval(config['OPTIM']['embedding_learning_rate']),
                  'weight_decay': eval(config['OPTIM']['embedding_weight_decay'])
                  },
                 {'params': [p for n, p in self.model.named_parameters() if 'embeds' not in n],
-                 'lr': eval(config['OPTIM']['learning_rate']),
-                 'weight_decay': eval(config['OPTIM']['weight_decay'])
+                 'lr': eval(config['OPTIM']['mlp_learning_rate']),
+                 'weight_decay': eval(config['OPTIM']['mlp_weight_decay'])
                  }
             ]
             self.optimizer = eval(optimizer_name)(params=optimizer_grouped_params)
         else:
-            lr = eval(config['OPTIM']['learning_rate'])
-            weight_decay = eval(config['OPTIM']['weight_decay'])
+            lr = eval(config['OPTIM']['embedding_learning_rate'])
+            weight_decay = eval(config['OPTIM']['embedding_weight_decay'])
             self.optimizer = eval(optimizer_name)(lr=lr, params=self.model.parameters(), weight_decay=weight_decay)
 
         lr_scheduler_name = 'torch.optim.lr_scheduler.' + config['OPTIM']['lr_scheduler']
