@@ -164,8 +164,8 @@ def relabel(data_name):
     new_link_df['user2'] = new_link_df['user2'].apply(lambda x: user_raw_idx2new_idx[x])
     new_link_df.to_csv(f'../{data_name}/link_data.csv', index=False, header=True)
     data_info = {
-        'user_num': len(user_new_idx2raw_idx),
-        'item_num': len(item_new_idx2raw_idx),
+        'user_num': str(len(user_new_idx2raw_idx)),
+        'item_num': str(len(item_new_idx2raw_idx)),
     }
     with open(f'../{data_name}/behavior_data/data_info.json', 'w') as f:
         json.dump(data_info, f, indent=2)
