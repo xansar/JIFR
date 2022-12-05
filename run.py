@@ -130,7 +130,7 @@ def get_config(args):
         else:
             arg_value = getattr(args, arg)
             if arg_value is not None:
-                print(f'cmd change arg {arg}: config_value-{config[arg_class[arg]][arg]}, new_value-{str(arg_value)}')
+                print(f'cmd change arg {arg}: {config[arg_class[arg]][arg]}-->{str(arg_value)}')
                 config[arg_class[arg]][arg] = str(arg_value)
 
 
@@ -169,8 +169,8 @@ def run(config, trial=None):
 
 
 if __name__ == '__main__':
-    args = parse_args()
-    config = get_config(args)
+    ARGS = parse_args()
+    config = get_config(ARGS)
     run(config)
     # model_name = ['LightGCN', 'FusionLightGCN']
     # for n in model_name:

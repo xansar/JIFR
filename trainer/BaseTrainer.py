@@ -597,6 +597,10 @@ class BaseTrainer:
             all_loss_lst[j] /= len(data_loader)
         return all_loss_lst
 
+    def train(self, trial=None):
+        loss_name = ['Loss']
+        return self._train(loss_name, trial=trial)
+
     def _train(self, loss_name, side_info: dict=None, trial=None):
         # 整体训练流程
         tqdm.write(self._log("=" * 10 + "TRAIN BEGIN" + "=" * 10))
