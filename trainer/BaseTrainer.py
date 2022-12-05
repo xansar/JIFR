@@ -25,6 +25,7 @@ from tqdm import tqdm, trange
 import time
 import os
 import json
+import copy
 
 cf_model = ['LightGCN', 'MF']
 social_model = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec']
@@ -133,17 +134,7 @@ class BaseTrainer:
         dataset = DGLRecDataset(config)
         self.etypes = dataset[0].etypes
         self.g = dataset[0]
-        if self.task == 'Link':
-            self.g = dgl.edge_type_subgraph(self.g, ['trust', 'trusted-by'])
-        else:
-            if self.model_name in cf_model:
-                self.g = dgl.edge_type_subgraph(self.g, ['rate', 'rated-by'])
-            elif self.model_name in social_model:
-                self.g = dgl.edge_type_subgraph(self.g, ['rate', 'rated-by', 'trust', 'trusted-by'])
-            elif self.model_name in directed_social_model:
-                self.g = dgl.edge_type_subgraph(self.g, ['rate', 'rated-by', 'trusted-by'])
-            else:
-                raise ValueError("Wrong Model Name!!!")
+        self.g = self._get_model_specific_etype_graph(self.g)
 
         self.train_rate_size = dataset.train_rate_size
         self.val_rate_size = dataset.val_rate_size
@@ -154,26 +145,109 @@ class BaseTrainer:
         val_batch_size = eval(config['DATA']['eval_batch_size'])
         test_batch_size = eval(config['DATA']['eval_batch_size'])
         num_workers = eval(config['DATA']['num_workers'])
-        budget = eval(config['TRAIN'].get('budget', '1000'))
+        budget = eval(config['DATA'].get('budget', '1000'))
         gcn_layer_num = eval(config['MODEL'].get('gcn_layer_num', '1'))
 
+        message_g, val_g, test_g, eids_dict = self._get_graphs_and_eids()
+
         self._get_history_lst()
-        eids_dict = self._get_eids()
-        self.train_loader = self._get_loader(mode='train', g=self.g, eid_dict=eids_dict['train'],
+        # eids_dict = self._get_eids()
+        self.train_loader = self._get_loader(mode='train', g=message_g, eid_dict=eids_dict['train'],
                                              batch_size=train_batch_size, num_workers=num_workers, is_shuffle=True,
                                              budget=budget)
 
-        self.val_loader = self._get_loader(mode='evaluate', g=self.g, eid_dict=eids_dict['val'],
+        self.val_loader = self._get_loader(mode='evaluate', g=val_g, eid_dict=eids_dict['val'],
                                            batch_size=val_batch_size, num_workers=0, is_shuffle=False,
                                            num_layers=gcn_layer_num, k=self.neg_num)
 
-        self.test_loader = self._get_loader(mode='test', g=self.g, eid_dict=eids_dict['test'],
+        self.test_loader = self._get_loader(mode='test', g=test_g, eid_dict=eids_dict['test'],
                                             batch_size=test_batch_size, num_workers=0, is_shuffle=False,
                                             num_layers=gcn_layer_num, k=self.neg_num)
 
         # 分bin测试用
         if self.bin_sep_lst is not None:
             self.train_e_id_lst, self.val_e_id_lst, self.test_e_id_lst = self.get_bins_eid_lst(eids_dict)
+
+    def _get_model_specific_etype_graph(self, g):
+        if self.task == 'Link':
+            g = dgl.edge_type_subgraph(g, ['trust', 'trusted-by'])
+        else:
+            if self.model_name in cf_model:
+                g = dgl.edge_type_subgraph(g, ['rate', 'rated-by'])
+            elif self.model_name in social_model:
+                g = dgl.edge_type_subgraph(g, ['rate', 'rated-by', 'trust', 'trusted-by'])
+            elif self.model_name in directed_social_model:
+                g = dgl.edge_type_subgraph(g, ['rate', 'rated-by', 'trusted-by'])
+            else:
+                raise ValueError("Wrong Model Name!!!")
+        return g
+
+    def _get_graphs_and_eids(self):
+        assert self.task == 'Rate' or self.task == 'Link'
+        # 如果是joint还需要改写，因为验证时rate和link各需要一个dataloader
+        s_e_dict = {
+            'train': {
+                'rate': (0, self.train_rate_size),
+                'link': (0, self.train_link_size),
+            },
+            'val': {
+                'rate': (self.train_rate_size, self.train_rate_size + self.val_rate_size),
+                'link': (self.train_link_size, self.train_link_size + self.val_link_size),
+            },
+            'test': {
+                'rate': (self.train_rate_size + self.val_rate_size, -1),
+                'link': (self.train_link_size + self.val_link_size, -1),
+            }
+        }
+        eid_dict = {
+            'train': {},
+            'val': {},
+            'test': {}
+        }
+
+        if self.task == 'Rate':
+            pred_etypes = [('user', 'rate', 'item')]
+        else:
+            pred_etypes = [('user', 'trust', 'user')]
+        # else:   # Joint
+        #     pred_etypes = [('user', 'rate', 'item'), ('user', 'trust', 'user')]
+
+        for m in eid_dict.keys():
+            # 训练时需要所有类型的边，验证时只需要rate或trust边
+            if m == 'train':
+                canonical_etypes = self.g.canonical_etypes
+            else:
+                canonical_etypes = pred_etypes
+            for etype in canonical_etypes:
+                if 'rate' in etype[1]:  # 1位置就是具体的etype名字
+                    start, end = s_e_dict[m]['rate']
+                else:
+                    start, end = s_e_dict[m]['link']
+                if end == -1:
+                    end = self.g.num_edges(etype=etype)
+                eid_dict[m].update({
+                    etype: range(start, end),
+                })
+        message_g = dgl.edge_subgraph(self.g, eid_dict['train'], relabel_nodes=False)
+        val_pred_g = dgl.edge_subgraph(self.g, eid_dict['val'], relabel_nodes=False)
+        test_pred_g = dgl.edge_subgraph(self.g, eid_dict['test'], relabel_nodes=False)
+        # 包含了消息边的测试图
+        e = pred_etypes[0]
+        # 这里，pred边被加到message边后面
+        val_g = message_g.clone()
+        val_g.add_edges(*val_pred_g.edges(etype=e), etype=e)
+        test_g = message_g.clone()
+        test_g.add_edges(*test_pred_g.edges(etype=e), etype=e)
+
+        train_size = len(eid_dict['train'][pred_etypes[0]])
+        val_size = len(eid_dict['val'][pred_etypes[0]])
+        test_size = len(eid_dict['test'][pred_etypes[0]])
+        eid_dict_for_dataloader = {
+            'train': {e: range(train_size)},  # 只选择一种边计数，避免对比时joint模型训练时间更长
+            'val': {e: range(train_size, train_size + val_size)},
+            'test': {e: range(train_size, train_size + test_size)},
+        }
+        return message_g, val_g, test_g, eid_dict_for_dataloader
 
     def _get_loader(self, mode, g, eid_dict, batch_size, num_workers, is_shuffle, **other_args):
         if self.device == torch.device('cuda'):
@@ -193,8 +267,12 @@ class BaseTrainer:
             num_layers = other_args['num_layers']
             k = other_args['k']
             sampler = dgl.dataloading.MultiLayerFullNeighborSampler(num_layers)
+            # 因为这里的g是只有message g和验证边的
+            # 所以这里需要排除的边就是需要验证的边
             sampler = dgl.dataloading.as_edge_prediction_sampler(
-                sampler, negative_sampler=NegativeSampler(self.history_lst, self.total_num, k))
+                sampler, negative_sampler=NegativeSampler(self.history_lst, self.total_num, k),
+                exclude=lambda x: eid_dict
+            )
             dataloader = dgl.dataloading.DataLoader(
                 g, eid_dict, sampler,
                 batch_size=batch_size,
@@ -207,18 +285,19 @@ class BaseTrainer:
         return dataloader
 
     def _get_eids(self):
+        # joint 需要修改
         eids_dict = {}
         if self.task == 'Rate' or self.task == 'Joint':
             eids_dict = {
-                'train': {'rate': range(self.train_rate_size)},
-                'val': {'rate': range(self.train_rate_size, self.train_rate_size + self.val_rate_size)},
-                'test': {'rate': range(self.train_rate_size + self.val_rate_size, self.g.num_edges(('user', 'rate', 'item')))},
+                'train': {('user', 'rate', 'item'): range(self.train_rate_size)},
+                'val': {('user', 'rate', 'item'): range(self.train_rate_size, self.train_rate_size + self.val_rate_size)},
+                'test': {('user', 'rate', 'item'): range(self.train_rate_size + self.val_rate_size, self.g.num_edges(('user', 'rate', 'item')))},
             }
         if self.task == 'Link' or self.task == 'Joint':
             eids_dict.update({
-                'train': {'trust': range(self.train_link_size)},
-                'val': {'trust': range(self.train_link_size, self.train_link_size + self.val_link_size)},
-                'test': {'trust': range(self.train_link_size + self.val_link_size, self.g.num_edges(('user', 'trust', 'user')))},
+                'train': {('user', 'trust', 'user'): range(self.train_link_size)},
+                'val': {('user', 'trust', 'user'): range(self.train_link_size, self.train_link_size + self.val_link_size)},
+                'test': {('user', 'trust', 'user'): range(self.train_link_size + self.val_link_size, self.g.num_edges(('user', 'trust', 'user')))},
             })
         return eids_dict
 
