@@ -400,8 +400,8 @@ class BaseTrainer:
 
         if self.is_visulized:
             self.vis_cnt += 1
-        if is_val:
-            self.metric.clear_metrics()
+        # if is_val:
+        #     self.metric.clear_metrics()
         return metric_str
 
     def _log(self, str_, mode='a'):
@@ -413,7 +413,8 @@ class BaseTrainer:
 
     def _save_model(self, save_pth):
         # 保存最好模型
-        tqdm.write("Save Best Model!")
+        best_value = self.metric.metric_dict[self.task][self.metric.save_metric][10]['best']
+        tqdm.write(self._log(f"Save Best {self.metric.save_metric} {best_value:.4f} Model!"))
         dir_pth, _ = os.path.split(save_pth)
         if not os.path.isdir(dir_pth):
             father_dir_pth, _ = os.path.split(dir_pth)
@@ -423,7 +424,8 @@ class BaseTrainer:
         torch.save(self.model.state_dict(), save_pth)
 
     def _load_model(self, save_pth, strict=False):
-        tqdm.write("Load Best Model!")
+        best_value = self.metric.metric_dict[self.task][self.metric.save_metric][10]['best']
+        tqdm.write(self._log(f"Load Best {self.metric.save_metric} {best_value:.4f} Model!"))
         state_dict = torch.load(save_pth)
         self.model.load_state_dict(state_dict, strict=strict)
 
