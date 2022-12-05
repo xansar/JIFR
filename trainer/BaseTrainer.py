@@ -166,7 +166,8 @@ class BaseTrainer:
 
         # 分bin测试用
         if self.bin_sep_lst is not None:
-            self.train_e_id_lst, self.val_e_id_lst, self.test_e_id_lst = self.get_bins_eid_lst(eids_dict)
+            self.train_e_id_lst, self.val_e_id_lst, self.test_e_id_lst = self.get_bins_eid_lst(
+                message_g, val_g, test_g, eids_dict)
 
     def _get_model_specific_etype_graph(self, g):
         if self.task == 'Link':
@@ -444,9 +445,9 @@ class BaseTrainer:
 
     def get_bins_eid_lst(self, eid_dict):
         # 获取需要切分的边的子图
-        train_g = dgl.edge_subgraph(self.g, eid_dict['train'], relabel_nodes=False)
-        val_g = dgl.edge_subgraph(self.g, eid_dict['val'], relabel_nodes=False)
-        test_g = dgl.edge_subgraph(self.g, eid_dict['test'], relabel_nodes=False)
+        train_g = dgl.edge_subgraph(train_g, eid_dict['train'], relabel_nodes=False)
+        val_g = dgl.edge_subgraph(val_g, eid_dict['val'], relabel_nodes=False)
+        test_g = dgl.edge_subgraph(test_g, eid_dict['test'], relabel_nodes=False)
 
         if self.task == 'Rate':
             etype = 'rate'
@@ -488,7 +489,6 @@ class BaseTrainer:
             e_id = torch.arange(u.shape[0]).masked_select(torch.isin(u, u_lst))
             test_e_id_lst.append(e_id)
         self.metric.bins_id_lst = val_e_id_lst  # 验证集，测试集不用算metric
-        tqdm.write(self._log(f'train edges num: {[len(lst) for lst in train_e_id_lst]}'))
         tqdm.write(self._log(f'train edges num: {[len(lst) for lst in train_e_id_lst]}'))
         tqdm.write(self._log(f'val edges num: {[len(lst) for lst in val_e_id_lst]}'))
         tqdm.write(self._log(f'test edges num: {[len(lst) for lst in test_e_id_lst]}'))
