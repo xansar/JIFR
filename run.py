@@ -49,10 +49,10 @@ def parse_args():
     # Parses the arguments.
     # MODEL
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('-m', '--model', type=str, default='MF',
+    parser.add_argument('-m', '--model_name', type=str, default='MF',
                         help='Choose config')
     # DATA
-    parser.add_argument('-d', '--dataset', type=str, default=None,
+    parser.add_argument('-d', '--data_name', type=str, default=None,
                         help='choose dataset')
     parser.add_argument('-tng', '--train_neg_num', type=int, default=None,
                         help='train neg num')
@@ -66,11 +66,11 @@ def parse_args():
                         help='num workers')
 
     # OPTIM
-    parser.add_argument('-lr', '--learning_rate', type=float, default=None,
+    parser.add_argument('-lr', '--mlp_learning_rate', type=float, default=None,
                         help='mlp learning rate')
     parser.add_argument('-elr', '--embedding_learning_rate', type=float, default=None,
                         help='embed learning rate')
-    parser.add_argument('-w', '--weight_decay', type=float, default=None,
+    parser.add_argument('-w', '--mlp_weight_decay', type=float, default=None,
                         help='mlp weight decay')
     parser.add_argument('-ew', '--embedding_weight_decay', type=float, default=None,
                         help='embed weight_decay')
@@ -96,16 +96,14 @@ def parse_args():
                         help='whether to print and save train logs (suggest to False when tune params)')
     return parser.parse_args()
 
-def get_config():
-    args = parse_args()
-
+def get_config(args):
     config = MyConfigParser()
-    model = args.model
+    model = args.model_name
     config.read('./config/' + model + '.ini', encoding='utf-8')
     config = config._sections
 
     arg_class = {
-        'dataset': 'DATA',
+        'data_name': 'DATA',
         'train_neg_num': 'DATA',
         'neg_num': 'DATA',
         'train_batch_size': 'DATA',
@@ -115,9 +113,9 @@ def get_config():
         'T_mult': 'OPTIM',
         'early_stop_num': 'OPTIM',
         'embedding_learning_rate': 'OPTIM',
-        'learning_rate': 'OPTIM',
+        'mlp_learning_rate': 'OPTIM',
         'embedding_weight_decay': 'OPTIM',
-        'weight_decay': 'OPTIM',
+        'mlp_weight_decay': 'OPTIM',
 
         'task': 'TRAIN',
         'epoch': 'TRAIN',
@@ -125,7 +123,7 @@ def get_config():
         'random_seed': 'TRAIN'
     }
 
-    skip_show_arg_lst = ['model', 'visulize', 'log']
+    skip_show_arg_lst = ['model_name', 'visulize', 'log']
     for arg in vars(args):
         if arg in skip_show_arg_lst:
             continue
@@ -136,10 +134,10 @@ def get_config():
                 config[arg_class[arg]][arg] = str(arg_value)
 
 
-    if args.dataset is None:
+    if args.data_name is None:
         data_name = config['DATA']['data_name']
     else:
-        data_name = args.dataset
+        data_name = args.data_name
 
     data_info = get_data_info(data_name)
     config['DATA']['data_name'] = data_name
@@ -155,7 +153,7 @@ def get_data_info(data_name):
         data_info = json.load(f)
     return data_info
 
-def run(config):
+def run(config, trial=None):
     seed = eval(config['TRAIN']['random_seed'])
     setup_seed(seed)
 
@@ -164,14 +162,15 @@ def run(config):
     trainer = eval(model_name + 'Trainer')(config=config)
     if not config['LOG']:
         with HiddenPrints():
-            metric_value = trainer.train()
+            metric_value = trainer.train(trial=trial)
     else:
-        metric_value = trainer.train()
+        metric_value = trainer.train(trial=trial)
     return metric_value
 
 
 if __name__ == '__main__':
-    config = get_config()
+    args = parse_args()
+    config = get_config(args)
     run(config)
     # model_name = ['LightGCN', 'FusionLightGCN']
     # for n in model_name:

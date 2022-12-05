@@ -20,6 +20,8 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
+import optuna
+
 from tqdm import tqdm, trange
 
 import time
@@ -595,7 +597,7 @@ class BaseTrainer:
             all_loss_lst[j] /= len(data_loader)
         return all_loss_lst
 
-    def _train(self, loss_name, side_info: dict=None):
+    def _train(self, loss_name, side_info: dict=None, trial=None):
         # 整体训练流程
         tqdm.write(self._log("=" * 10 + "TRAIN BEGIN" + "=" * 10))
         epoch = eval(self.config['TRAIN']['epoch'])
@@ -637,6 +639,12 @@ class BaseTrainer:
                 if self.metric.is_save:
                     self._save_model(self.save_pth)
                     self.metric.is_save = False
+
+                if trial is not None:
+                    intermediate_value = self.metric.metric_dict[self.task][self.metric.save_metric][10]['value']
+                    trial.report(intermediate_value, e)
+                    if trial.should_prune():
+                        raise optuna.TrialPruned()
                 # 是否早停
                 if self.metric.is_early_stop and e >= self.warm_epoch:
                     tqdm.write(self._log("Early Stop!"))
@@ -672,5 +680,5 @@ class BaseTrainer:
         tqdm.write(self._log(metric_str))
         tqdm.write("=" * 10 + "TRAIN END" + "=" * 10)
 
-        test_hr10 = self.metric.metric_dict[self.task]['HR'][10]['value']
-        return test_hr10
+        test_nDCG10 = self.metric.metric_dict[self.task][self.metric.save_metric][10]['value']
+        return test_nDCG10

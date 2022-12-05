@@ -23,6 +23,6 @@ class MFTrainer(BaseTrainer):
     def __init__(self, config):
         super(MFTrainer, self).__init__(config)
 
-    def train(self):
+    def train(self, trial=None):
         loss_name = ['Loss']
-        return self._train(loss_name)
+        return self._train(loss_name, trial=trial)
