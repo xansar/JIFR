@@ -20,9 +20,5 @@ import os
 from .BaseTrainer import BaseTrainer
 
 class LightGCNTrainer(BaseTrainer):
-    def __init__(self, config):
-        super(LightGCNTrainer, self).__init__(config)
-
-    def train(self):
-        loss_name = ['Loss']
-        self._train(loss_name)
+    def __init__(self, config, trial=None):
+        super(LightGCNTrainer, self).__init__(config, trial=trial)

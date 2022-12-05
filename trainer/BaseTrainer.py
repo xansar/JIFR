@@ -20,6 +20,8 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
+import optuna
+
 from tqdm import tqdm, trange
 
 import time
@@ -39,7 +41,10 @@ BaseTrainer主要用来写一些通用的函数，比如打印config之类
 """
 
 class BaseTrainer:
-    def __init__(self, config):
+    def __init__(self, config, trial):
+        # 超参搜索
+        self.trial = trial
+
         self.task = config['TRAIN']['task']
         self.is_visulized = config['VISUALIZED']
         self.is_log = config['LOG']
@@ -52,12 +57,13 @@ class BaseTrainer:
         log_dir = self.config['TRAIN']['log_pth']
         if not os.path.isdir(os.path.join(log_dir, self.model_name, self.data_name)):
             os.makedirs(os.path.join(log_dir, self.model_name, self.data_name))
-        self.log_pth = os.path.join(log_dir, self.model_name, self.data_name, f'{self.task}_{self.random_seed}_{self.model_name}.txt')
+        trial_text = 'HyperParamsSearch_' if self.trial is not None else ''
+        self.log_pth = os.path.join(log_dir, self.model_name, self.data_name, f'{trial_text}{self.task}_{self.random_seed}_{self.model_name}.txt')
         # 设置保存地址
         save_dir = self.config['TRAIN']['save_pth']
         if not os.path.isdir(os.path.join(save_dir, self.model_name, self.data_name)):
             os.makedirs(os.path.join(save_dir, self.model_name, self.data_name))
-        self.save_pth = os.path.join(save_dir, self.model_name, self.data_name, f'{self.task}_{self.random_seed}_{self.model_name}.pth')
+        self.save_pth = os.path.join(save_dir, self.model_name, self.data_name, f'{trial_text}{self.task}_{self.random_seed}_{self.model_name}.pth')
         # 打印config
         self._print_config()
 
@@ -102,21 +108,21 @@ class BaseTrainer:
         config = self.config
         # optimizer
         optimizer_name = 'torch.optim.' + config['OPTIM']['optimizer']
-        if 'embedding_weight_decay' in config['OPTIM'].keys():
+        if 'mlp_weight_decay' in config['OPTIM'].keys():
             optimizer_grouped_params = [
                 {'params': [p for n, p in self.model.named_parameters() if 'embeds' in n],
                  'lr': eval(config['OPTIM']['embedding_learning_rate']),
                  'weight_decay': eval(config['OPTIM']['embedding_weight_decay'])
                  },
                 {'params': [p for n, p in self.model.named_parameters() if 'embeds' not in n],
-                 'lr': eval(config['OPTIM']['learning_rate']),
-                 'weight_decay': eval(config['OPTIM']['weight_decay'])
+                 'lr': eval(config['OPTIM']['mlp_learning_rate']),
+                 'weight_decay': eval(config['OPTIM']['mlp_weight_decay'])
                  }
             ]
             self.optimizer = eval(optimizer_name)(params=optimizer_grouped_params)
         else:
-            lr = eval(config['OPTIM']['learning_rate'])
-            weight_decay = eval(config['OPTIM']['weight_decay'])
+            lr = eval(config['OPTIM']['embedding_learning_rate'])
+            weight_decay = eval(config['OPTIM']['embedding_weight_decay'])
             self.optimizer = eval(optimizer_name)(lr=lr, params=self.model.parameters(), weight_decay=weight_decay)
 
         lr_scheduler_name = 'torch.optim.lr_scheduler.' + config['OPTIM']['lr_scheduler']
@@ -166,7 +172,8 @@ class BaseTrainer:
 
         # 分bin测试用
         if self.bin_sep_lst is not None:
-            self.train_e_id_lst, self.val_e_id_lst, self.test_e_id_lst = self.get_bins_eid_lst(eids_dict)
+            self.train_e_id_lst, self.val_e_id_lst, self.test_e_id_lst = self.get_bins_eid_lst(
+                message_g, val_g, test_g, eids_dict)
 
     def _get_model_specific_etype_graph(self, g):
         if self.task == 'Link':
@@ -399,8 +406,8 @@ class BaseTrainer:
 
         if self.is_visulized:
             self.vis_cnt += 1
-        if is_val:
-            self.metric.clear_metrics()
+        # if is_val:
+        #     self.metric.clear_metrics()
         return metric_str
 
     def _log(self, str_, mode='a'):
@@ -412,7 +419,8 @@ class BaseTrainer:
 
     def _save_model(self, save_pth):
         # 保存最好模型
-        tqdm.write("Save Best Model!")
+        best_value = self.metric.metric_dict[self.task][self.metric.save_metric][10]['best']
+        tqdm.write(self._log(f"Save Best {self.metric.save_metric} {best_value:.4f} Model!"))
         dir_pth, _ = os.path.split(save_pth)
         if not os.path.isdir(dir_pth):
             father_dir_pth, _ = os.path.split(dir_pth)
@@ -422,7 +430,8 @@ class BaseTrainer:
         torch.save(self.model.state_dict(), save_pth)
 
     def _load_model(self, save_pth, strict=False):
-        tqdm.write("Load Best Model!")
+        best_value = self.metric.metric_dict[self.task][self.metric.save_metric][10]['best']
+        tqdm.write(self._log(f"Load Best {self.metric.save_metric} {best_value:.4f} Model!"))
         state_dict = torch.load(save_pth)
         self.model.load_state_dict(state_dict, strict=strict)
 
@@ -442,11 +451,11 @@ class BaseTrainer:
                 self.writer.add_histogram(f'{mode}/{s}_{e}_neg_pred', neg_pred[id_lst], global_step=global_step)
                 self.writer.add_histogram(f'{mode}/{s}_{e}_cat_pred', cat_pred[id_lst], global_step=global_step)
 
-    def get_bins_eid_lst(self, eid_dict):
+    def get_bins_eid_lst(self, train_g, val_g, test_g, eid_dict):
         # 获取需要切分的边的子图
-        train_g = dgl.edge_subgraph(self.g, eid_dict['train'], relabel_nodes=False)
-        val_g = dgl.edge_subgraph(self.g, eid_dict['val'], relabel_nodes=False)
-        test_g = dgl.edge_subgraph(self.g, eid_dict['test'], relabel_nodes=False)
+        train_g = dgl.edge_subgraph(train_g, eid_dict['train'], relabel_nodes=False)
+        val_g = dgl.edge_subgraph(val_g, eid_dict['val'], relabel_nodes=False)
+        test_g = dgl.edge_subgraph(test_g, eid_dict['test'], relabel_nodes=False)
 
         if self.task == 'Rate':
             etype = 'rate'
@@ -488,7 +497,6 @@ class BaseTrainer:
             e_id = torch.arange(u.shape[0]).masked_select(torch.isin(u, u_lst))
             test_e_id_lst.append(e_id)
         self.metric.bins_id_lst = val_e_id_lst  # 验证集，测试集不用算metric
-        tqdm.write(self._log(f'train edges num: {[len(lst) for lst in train_e_id_lst]}'))
         tqdm.write(self._log(f'train edges num: {[len(lst) for lst in train_e_id_lst]}'))
         tqdm.write(self._log(f'val edges num: {[len(lst) for lst in val_e_id_lst]}'))
         tqdm.write(self._log(f'test edges num: {[len(lst) for lst in test_e_id_lst]}'))
@@ -593,6 +601,10 @@ class BaseTrainer:
             all_loss_lst[j] /= len(data_loader)
         return all_loss_lst
 
+    def train(self):
+        loss_name = ['Loss']
+        return self._train(loss_name)
+
     def _train(self, loss_name, side_info: dict=None):
         # 整体训练流程
         tqdm.write(self._log("=" * 10 + "TRAIN BEGIN" + "=" * 10))
@@ -635,6 +647,12 @@ class BaseTrainer:
                 if self.metric.is_save:
                     self._save_model(self.save_pth)
                     self.metric.is_save = False
+
+                if self.trial is not None:
+                    intermediate_value = self.metric.metric_dict[self.task][self.metric.save_metric][10]['value']
+                    self.trial.report(intermediate_value, e)
+                    if self.trial.should_prune():
+                        raise optuna.TrialPruned()
                 # 是否早停
                 if self.metric.is_early_stop and e >= self.warm_epoch:
                     tqdm.write(self._log("Early Stop!"))
@@ -670,5 +688,5 @@ class BaseTrainer:
         tqdm.write(self._log(metric_str))
         tqdm.write("=" * 10 + "TRAIN END" + "=" * 10)
 
-        test_hr10 = self.metric.metric_dict[self.task]['HR'][10]['value']
-        return test_hr10
+        test_nDCG10 = self.metric.metric_dict[self.task][self.metric.save_metric][10]['value']
+        return test_nDCG10

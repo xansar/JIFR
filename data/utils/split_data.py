@@ -29,7 +29,7 @@ def split_data(train_ratio=0.75, val_ratio=0.05, test_ratio=0.2, raw_pth='../Ext
 
     with open(os.path.join(raw_pth, 'behavior_data/user_idx_transfer.json'), 'r') as f:
         user_dict = json.load(f)
-        pred_user_max = user_dict['pred_user_max']
+        user_num = user_dict['user_num']
 
     def split_single_lst(lst):
         np.random.shuffle(lst)
@@ -62,7 +62,7 @@ def split_data(train_ratio=0.75, val_ratio=0.05, test_ratio=0.2, raw_pth='../Ext
     write_data([], [], [], 'link', 'w')
     user2item = {}
     user2trust = {}
-    for i in trange(pred_user_max):
+    for i in trange(user_num):
         user2item[i] = rate_df[rate_df.user==i]['item'].values.tolist()
         user2trust[i] = link_df[link_df.user1==i]['user2'].values.tolist()
         item_lst = rate_df[rate_df.user==i][['user', 'item', 'rate']].values.tolist()

@@ -19,6 +19,7 @@ class BaseMetric:
         self.bin_sep_lst = eval(config['METRIC'].get('bin_sep_lst', 'None'))
         self.is_early_stop = False
         self.is_save = False
+        self.save_metric = config['METRIC'].get('save_metric', 'nDCG')
 
         self.early_stop_num = eval(config['OPTIM']['early_stop_num'])
         self.early_stop_cnt = 0
@@ -88,9 +89,9 @@ class BaseMetric:
                     self.metric_dict[t][m][k]['cnt'] = -1
                     if self.metric_dict[t][m][k]['value'] > self.metric_dict[t][m][k]['best']:
                         self.metric_dict[t][m][k]['best'] = self.metric_dict[t][m][k]['value']
-                        if k == self.ks[-1] and t == task and m == 'HR':
+                        if k == self.ks[-1] and t == task and m == self.save_metric:
                             self.is_save = True
-                    elif k == self.ks[-1] and t == task and m == 'HR':
+                    elif k == self.ks[-1] and t == task and m == self.save_metric:
                         self.metric_cnt += 1
                         if self.metric_dict[t][m][k]['value'] < self.early_stop_last and self.metric_cnt * self.eval_step > self.warm_epoch:
                             self.early_stop_cnt += 1

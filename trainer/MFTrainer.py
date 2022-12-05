@@ -20,9 +20,5 @@ import os
 from .BaseTrainer import BaseTrainer
 
 class MFTrainer(BaseTrainer):
-    def __init__(self, config):
-        super(MFTrainer, self).__init__(config)
-
-    def train(self):
-        loss_name = ['Loss']
-        return self._train(loss_name)
+    def __init__(self, config, trial=None):
+        super(MFTrainer, self).__init__(config, trial)
