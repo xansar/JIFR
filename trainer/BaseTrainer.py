@@ -443,7 +443,7 @@ class BaseTrainer:
                 self.writer.add_histogram(f'{mode}/{s}_{e}_neg_pred', neg_pred[id_lst], global_step=global_step)
                 self.writer.add_histogram(f'{mode}/{s}_{e}_cat_pred', cat_pred[id_lst], global_step=global_step)
 
-    def get_bins_eid_lst(self, eid_dict):
+    def get_bins_eid_lst(self, train_g, val_g, test_g, eid_dict):
         # 获取需要切分的边的子图
         train_g = dgl.edge_subgraph(train_g, eid_dict['train'], relabel_nodes=False)
         val_g = dgl.edge_subgraph(val_g, eid_dict['val'], relabel_nodes=False)
