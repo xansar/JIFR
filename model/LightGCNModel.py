@@ -48,19 +48,54 @@ class LightGCNModel(nn.Module):
             )
         self.pred = HeteroDotProductPredictor()
 
-    def forward(self, messege_g, pos_pred_g, neg_pred_g):
-        idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
-        res_embedding = self.embedding(idx)
-        for i, layer in enumerate(self.layers):
-            if i == 0:
-                embeddings = layer(messege_g, res_embedding)
-            else:
-                embeddings = layer(messege_g, embeddings)
-            # print(embeddings)
-            # print(res_embedding['user'].shape, embeddings['user'].shape)
-            # print(res_embedding['item'].shape, embeddings['item'].shape)
-            res_embedding['user'] = res_embedding['user'] + embeddings['user'] * (1 / (i + 2))
-            res_embedding['item'] = res_embedding['item'] + embeddings['item'] * (1 / (i + 2))
+    def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
+        # idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
+        # res_embedding = self.embedding(idx)
+        # for i, layer in enumerate(self.layers):
+        #     if i == 0:
+        #         embeddings = layer(messege_g, res_embedding)
+        #     else:
+        #         embeddings = layer(messege_g, embeddings)
+        #     # print(embeddings)
+        #     # print(res_embedding['user'].shape, embeddings['user'].shape)
+        #     # print(res_embedding['item'].shape, embeddings['item'].shape)
+        #     res_embedding['user'] = res_embedding['user'] + embeddings['user'] * (1 / (i + 2))
+        #     res_embedding['item'] = res_embedding['item'] + embeddings['item'] * (1 / (i + 2))
+        # pos_score = self.pred(pos_pred_g, res_embedding, 'rate')
+        # neg_score = self.pred(neg_pred_g, res_embedding, 'rate')
+
+        if input_nodes is None:
+            idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+            res_embedding = self.embedding(idx)
+            for i, layer in enumerate(self.layers):
+                if i == 0:
+                    embeddings = layer(messege_g, res_embedding)
+                else:
+                    embeddings = layer(messege_g, embeddings)
+                res_embedding['user'] = res_embedding['user'] + embeddings['user']
+                res_embedding['item'] = res_embedding['item'] + embeddings['item']
+            res_embedding['user'] /= (1 / len(self.layers))
+            res_embedding['item'] /= (1 / len(self.layers))
+        else:
+            original_embedding = self.embedding(input_nodes)
+            dst_user = pos_pred_g.dstnodes(ntype='user')
+            dst_item = pos_pred_g.dstnodes(ntype='item')
+            res_embedding = {
+                'user': original_embedding['user'][dst_user],
+                'item': original_embedding['item'][dst_item]
+            }
+            for i in range(1, len(messege_g) + 1):
+                blocks = messege_g[-i:]
+                for j in range(i):
+                    layer = self.layers[j]
+                    if j == 0:
+                        embeddings = layer(blocks[j], original_embedding)
+                    else:
+                        embeddings = layer(blocks[j], embeddings)
+                res_embedding['user'] = res_embedding['user'] + embeddings['user']
+                res_embedding['item'] = res_embedding['item'] + embeddings['item']
+            res_embedding['user'] /= (1 / len(self.layers))
+            res_embedding['item'] /= (1 / len(self.layers))
         pos_score = self.pred(pos_pred_g, res_embedding, 'rate')
         neg_score = self.pred(neg_pred_g, res_embedding, 'rate')
         return pos_score, neg_score

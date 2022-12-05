@@ -25,6 +25,7 @@ from tqdm import tqdm, trange
 import time
 import os
 import json
+import copy
 
 cf_model = ['LightGCN', 'MF']
 social_model = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec']
@@ -84,10 +85,10 @@ class BaseTrainer:
         self._to(self.device)
 
     def _build(self):
+        self._build_metric()
         self._build_data()
         self._build_model()
         self._build_optimizer()
-        self._build_metric()
 
     def _build_model(self):
         # model
@@ -133,17 +134,7 @@ class BaseTrainer:
         dataset = DGLRecDataset(config)
         self.etypes = dataset[0].etypes
         self.g = dataset[0]
-        if self.task == 'Link':
-            self.g = dgl.edge_type_subgraph(self.g, ['trust', 'trusted-by'])
-        else:
-            if self.model_name in cf_model:
-                self.g = dgl.edge_type_subgraph(self.g, ['rate', 'rated-by'])
-            elif self.model_name in social_model:
-                self.g = dgl.edge_type_subgraph(self.g, ['rate', 'rated-by', 'trust', 'trusted-by'])
-            elif self.model_name in directed_social_model:
-                self.g = dgl.edge_type_subgraph(self.g, ['rate', 'rated-by', 'trusted-by'])
-            else:
-                raise ValueError("Wrong Model Name!!!")
+        self.g = self._get_model_specific_etype_graph(self.g)
 
         self.train_rate_size = dataset.train_rate_size
         self.val_rate_size = dataset.val_rate_size
@@ -154,22 +145,109 @@ class BaseTrainer:
         val_batch_size = eval(config['DATA']['eval_batch_size'])
         test_batch_size = eval(config['DATA']['eval_batch_size'])
         num_workers = eval(config['DATA']['num_workers'])
-        budget = eval(config['TRAIN'].get('budget', '1000'))
+        budget = eval(config['DATA'].get('budget', '1000'))
         gcn_layer_num = eval(config['MODEL'].get('gcn_layer_num', '1'))
 
+        message_g, val_g, test_g, eids_dict = self._get_graphs_and_eids()
+
         self._get_history_lst()
-        eids_dict = self._get_eids()
-        self.train_loader = self._get_loader(mode='train', g=self.g, eid_dict=eids_dict['train'],
+        # eids_dict = self._get_eids()
+        self.train_loader = self._get_loader(mode='train', g=message_g, eid_dict=eids_dict['train'],
                                              batch_size=train_batch_size, num_workers=num_workers, is_shuffle=True,
                                              budget=budget)
 
-        self.val_loader = self._get_loader(mode='evaluate', g=self.g, eid_dict=eids_dict['val'],
+        self.val_loader = self._get_loader(mode='evaluate', g=val_g, eid_dict=eids_dict['val'],
                                            batch_size=val_batch_size, num_workers=0, is_shuffle=False,
                                            num_layers=gcn_layer_num, k=self.neg_num)
 
-        self.test_loader = self._get_loader(mode='test', g=self.g, eid_dict=eids_dict['test'],
+        self.test_loader = self._get_loader(mode='test', g=test_g, eid_dict=eids_dict['test'],
                                             batch_size=test_batch_size, num_workers=0, is_shuffle=False,
                                             num_layers=gcn_layer_num, k=self.neg_num)
+
+        # 分bin测试用
+        if self.bin_sep_lst is not None:
+            self.train_e_id_lst, self.val_e_id_lst, self.test_e_id_lst = self.get_bins_eid_lst(eids_dict)
+
+    def _get_model_specific_etype_graph(self, g):
+        if self.task == 'Link':
+            g = dgl.edge_type_subgraph(g, ['trust', 'trusted-by'])
+        else:
+            if self.model_name in cf_model:
+                g = dgl.edge_type_subgraph(g, ['rate', 'rated-by'])
+            elif self.model_name in social_model:
+                g = dgl.edge_type_subgraph(g, ['rate', 'rated-by', 'trust', 'trusted-by'])
+            elif self.model_name in directed_social_model:
+                g = dgl.edge_type_subgraph(g, ['rate', 'rated-by', 'trusted-by'])
+            else:
+                raise ValueError("Wrong Model Name!!!")
+        return g
+
+    def _get_graphs_and_eids(self):
+        assert self.task == 'Rate' or self.task == 'Link'
+        # 如果是joint还需要改写，因为验证时rate和link各需要一个dataloader
+        s_e_dict = {
+            'train': {
+                'rate': (0, self.train_rate_size),
+                'link': (0, self.train_link_size),
+            },
+            'val': {
+                'rate': (self.train_rate_size, self.train_rate_size + self.val_rate_size),
+                'link': (self.train_link_size, self.train_link_size + self.val_link_size),
+            },
+            'test': {
+                'rate': (self.train_rate_size + self.val_rate_size, -1),
+                'link': (self.train_link_size + self.val_link_size, -1),
+            }
+        }
+        eid_dict = {
+            'train': {},
+            'val': {},
+            'test': {}
+        }
+
+        if self.task == 'Rate':
+            pred_etypes = [('user', 'rate', 'item')]
+        else:
+            pred_etypes = [('user', 'trust', 'user')]
+        # else:   # Joint
+        #     pred_etypes = [('user', 'rate', 'item'), ('user', 'trust', 'user')]
+
+        for m in eid_dict.keys():
+            # 训练时需要所有类型的边，验证时只需要rate或trust边
+            if m == 'train':
+                canonical_etypes = self.g.canonical_etypes
+            else:
+                canonical_etypes = pred_etypes
+            for etype in canonical_etypes:
+                if 'rate' in etype[1]:  # 1位置就是具体的etype名字
+                    start, end = s_e_dict[m]['rate']
+                else:
+                    start, end = s_e_dict[m]['link']
+                if end == -1:
+                    end = self.g.num_edges(etype=etype)
+                eid_dict[m].update({
+                    etype: range(start, end),
+                })
+        message_g = dgl.edge_subgraph(self.g, eid_dict['train'], relabel_nodes=False)
+        val_pred_g = dgl.edge_subgraph(self.g, eid_dict['val'], relabel_nodes=False)
+        test_pred_g = dgl.edge_subgraph(self.g, eid_dict['test'], relabel_nodes=False)
+        # 包含了消息边的测试图
+        e = pred_etypes[0]
+        # 这里，pred边被加到message边后面
+        val_g = message_g.clone()
+        val_g.add_edges(*val_pred_g.edges(etype=e), etype=e)
+        test_g = message_g.clone()
+        test_g.add_edges(*test_pred_g.edges(etype=e), etype=e)
+
+        train_size = len(eid_dict['train'][pred_etypes[0]])
+        val_size = len(eid_dict['val'][pred_etypes[0]])
+        test_size = len(eid_dict['test'][pred_etypes[0]])
+        eid_dict_for_dataloader = {
+            'train': {e: range(train_size)},  # 只选择一种边计数，避免对比时joint模型训练时间更长
+            'val': {e: range(train_size, train_size + val_size)},
+            'test': {e: range(train_size, train_size + test_size)},
+        }
+        return message_g, val_g, test_g, eid_dict_for_dataloader
 
     def _get_loader(self, mode, g, eid_dict, batch_size, num_workers, is_shuffle, **other_args):
         if self.device == torch.device('cuda'):
@@ -189,8 +267,12 @@ class BaseTrainer:
             num_layers = other_args['num_layers']
             k = other_args['k']
             sampler = dgl.dataloading.MultiLayerFullNeighborSampler(num_layers)
+            # 因为这里的g是只有message g和验证边的
+            # 所以这里需要排除的边就是需要验证的边
             sampler = dgl.dataloading.as_edge_prediction_sampler(
-                sampler, negative_sampler=NegativeSampler(self.history_lst, self.total_num, k))
+                sampler, negative_sampler=NegativeSampler(self.history_lst, self.total_num, k),
+                exclude=lambda x: eid_dict
+            )
             dataloader = dgl.dataloading.DataLoader(
                 g, eid_dict, sampler,
                 batch_size=batch_size,
@@ -203,18 +285,19 @@ class BaseTrainer:
         return dataloader
 
     def _get_eids(self):
+        # joint 需要修改
         eids_dict = {}
         if self.task == 'Rate' or self.task == 'Joint':
             eids_dict = {
-                'train': {'rate': range(self.train_rate_size)},
-                'val': {'rate': range(self.train_rate_size, self.train_rate_size + self.val_rate_size)},
-                'test': {'rate': range(self.train_rate_size + self.val_rate_size, self.g.num_edges(('user', 'rate', 'item')))},
+                'train': {('user', 'rate', 'item'): range(self.train_rate_size)},
+                'val': {('user', 'rate', 'item'): range(self.train_rate_size, self.train_rate_size + self.val_rate_size)},
+                'test': {('user', 'rate', 'item'): range(self.train_rate_size + self.val_rate_size, self.g.num_edges(('user', 'rate', 'item')))},
             }
         if self.task == 'Link' or self.task == 'Joint':
             eids_dict.update({
-                'train': {'trust': range(self.train_link_size)},
-                'val': {'trust': range(self.train_link_size, self.train_link_size + self.val_link_size)},
-                'test': {'trust': range(self.train_link_size + self.val_link_size, self.g.num_edges(('user', 'trust', 'user')))},
+                'train': {('user', 'trust', 'user'): range(self.train_link_size)},
+                'val': {('user', 'trust', 'user'): range(self.train_link_size, self.train_link_size + self.val_link_size)},
+                'test': {('user', 'trust', 'user'): range(self.train_link_size + self.val_link_size, self.g.num_edges(('user', 'trust', 'user')))},
             })
         return eids_dict
 
@@ -359,11 +442,17 @@ class BaseTrainer:
                 self.writer.add_histogram(f'{mode}/{s}_{e}_neg_pred', neg_pred[id_lst], global_step=global_step)
                 self.writer.add_histogram(f'{mode}/{s}_{e}_cat_pred', cat_pred[id_lst], global_step=global_step)
 
-    def get_bins_eid_lst(self):
+    def get_bins_eid_lst(self, eid_dict):
+        # 获取需要切分的边的子图
+        train_g = dgl.edge_subgraph(self.g, eid_dict['train'], relabel_nodes=False)
+        val_g = dgl.edge_subgraph(self.g, eid_dict['val'], relabel_nodes=False)
+        test_g = dgl.edge_subgraph(self.g, eid_dict['test'], relabel_nodes=False)
+
         if self.task == 'Rate':
             etype = 'rate'
         else:
             etype = 'trust'
+
         train_e_id_lst = []
         val_e_id_lst = []
         test_e_id_lst = []
@@ -372,34 +461,37 @@ class BaseTrainer:
         self.bins_start_end_lst = []
         # u_num_lst = []
         for i in range(len(self.bin_sep_lst)):
+            # 获取对应的mask，找到train_g里面在当前度范围内的用户id
             s = self.bin_sep_lst[i]
             if i == len(self.bin_sep_lst) - 1:
-                mask = (self.train_g.out_degrees(etype=etype) >= s)
+                mask = (train_g.out_degrees(etype=etype) >= s)
                 e = '∞'
             else:
                 e = self.bin_sep_lst[i + 1]
-                mask = (self.train_g.out_degrees(etype=etype) >= s) * \
-                       (self.train_g.out_degrees(etype=etype) < e)
+                mask = (train_g.out_degrees(etype=etype) >= s) * \
+                       (train_g.out_degrees(etype=etype) < e)
             self.bins_start_end_lst.append((s, e))
-
-            u_lst = self.train_g.nodes('user').masked_select(mask)
+            # 所有在这个度范围内的用户id tensor
+            u_lst = train_g.nodes('user').masked_select(mask)
             # u_num_lst.append(len(u_lst) / self.user_num)
             # 训练集
-            u = self.train_g.edges(etype=etype)[0]
-            e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
+            u = train_g.edges(etype=etype)[0]
+            # masked select配合isin 把所有在ulst中的u都选出来
+            e_id = torch.arange(u.shape[0]).masked_select(torch.isin(u, u_lst))
             train_e_id_lst.append(e_id)
             # 验证集
-            u = self.val_pred_g.edges(etype=etype)[0]
-            e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
+            u = val_g.edges(etype=etype)[0]
+            e_id = torch.arange(u.shape[0]).masked_select(torch.isin(u, u_lst))
             val_e_id_lst.append(e_id)
             # 测试集
-            u = self.test_pred_g.edges(etype=etype)[0]
-            e_id = torch.arange(u.shape[0], device=self.device).masked_select(torch.isin(u, u_lst))
+            u = test_g.edges(etype=etype)[0]
+            e_id = torch.arange(u.shape[0]).masked_select(torch.isin(u, u_lst))
             test_e_id_lst.append(e_id)
         self.metric.bins_id_lst = val_e_id_lst  # 验证集，测试集不用算metric
-        print([len(lst) for lst in train_e_id_lst])
-        print([len(lst) for lst in val_e_id_lst])
-        print([len(lst) for lst in test_e_id_lst])
+        tqdm.write(self._log(f'train edges num: {[len(lst) for lst in train_e_id_lst]}'))
+        tqdm.write(self._log(f'train edges num: {[len(lst) for lst in train_e_id_lst]}'))
+        tqdm.write(self._log(f'val edges num: {[len(lst) for lst in val_e_id_lst]}'))
+        tqdm.write(self._log(f'test edges num: {[len(lst) for lst in test_e_id_lst]}'))
         return train_e_id_lst, val_e_id_lst, test_e_id_lst
 
     def get_side_info(self):
@@ -484,7 +576,8 @@ class BaseTrainer:
             bar_loader = tqdm(enumerate(data_loader), total=len(data_loader))
         else:
             bar_loader = enumerate(data_loader)
-
+        if mode != 'train':
+            self.metric.iter_step = 0
         for i, graphs in bar_loader:
             loss_lst = self.step(
                 mode=mode, graphs=graphs,
@@ -493,6 +586,9 @@ class BaseTrainer:
                 if len(loss_name) == 1:
                     loss_lst = [loss_lst]
                 all_loss_lst[j] += loss_lst[j]
+            if mode != 'train':
+                self.metric.iter_step += 1
+
         for j in range(len(loss_name)):
             all_loss_lst[j] /= len(data_loader)
         return all_loss_lst
@@ -502,10 +598,6 @@ class BaseTrainer:
         tqdm.write(self._log("=" * 10 + "TRAIN BEGIN" + "=" * 10))
         epoch = eval(self.config['TRAIN']['epoch'])
 
-        # 分bin测试用
-        if self.bin_sep_lst is not None:
-            train_e_id_lst, val_e_id_lst, test_e_id_lst = self.get_bins_eid_lst()
-
         side_info = self.get_side_info()
         for e in range(1, epoch + 1):
             """
@@ -514,9 +606,9 @@ class BaseTrainer:
             """
             self.cur_e = e
 
-            # 分箱看histgram
-            if self.bin_sep_lst is not None and self.is_visulized == True:
-                self.bins_id_lst = train_e_id_lst
+            # # 分箱看histgram
+            # if self.bin_sep_lst is not None and self.is_visulized == True:
+            #     self.bins_id_lst = self.train_e_id_lst
 
             # train
             all_loss_lst = self.wrap_step_loop('train', self.train_loader, side_info, loss_name)
@@ -527,7 +619,7 @@ class BaseTrainer:
 
             if e % self.eval_step == 0:
                 if self.bin_sep_lst is not None:
-                    self.bins_id_lst = val_e_id_lst
+                    self.bins_id_lst = self.val_e_id_lst
                 # 在训练图上跑节点表示，在验证图上预测边的概率
                 self.metric.clear_metrics()
                 all_loss_lst = self.wrap_step_loop('evaluate', self.val_loader, side_info, loss_name)
@@ -565,8 +657,8 @@ class BaseTrainer:
 
         # 分bin
         if self.bin_sep_lst is not None:
-            self.metric.bins_id_lst = test_e_id_lst
-            self.bins_id_lst = test_e_id_lst
+            self.metric.bins_id_lst = self.test_e_id_lst
+            self.bins_id_lst = self.test_e_id_lst
 
         all_loss_lst = self.wrap_step_loop('test', self.test_loader, side_info, loss_name)
         self.metric.get_batch_metrics()
@@ -580,123 +672,3 @@ class BaseTrainer:
 
         test_hr10 = self.metric.metric_dict[self.task]['HR'][10]['value']
         return test_hr10
-
-
-
-    def DEPRECATED_train(self, loss_name, side_info: dict=None):
-        raise NotImplementedError
-        bar_range = trange if self.step_per_epoch > 10 else lambda x: range(x)
-        # 整体训练流程
-        tqdm.write(self._log("=" * 10 + "TRAIN BEGIN" + "=" * 10))
-        epoch = eval(self.config['TRAIN']['epoch'])
-        # 从左到右：训练图，用于验证的图，用于测试的图
-        train_g, val_pred_g, test_pred_g = self.get_graphs()
-        self.train_g = train_g.to(self.device)
-        self.val_pred_g = val_pred_g.to(self.device)
-        self.test_pred_g = test_pred_g.to(self.device)
-
-        # 分bin测试用
-        if self.bin_sep_lst is not None:
-            train_e_id_lst, val_e_id_lst, test_e_id_lst = self.get_bins_eid_lst()
-            exit()
-        side_info = self.get_side_info()
-
-        # # drop graph
-        # drop_edger = dgl.DropEdge()
-        for e in range(1, epoch + 1):
-            """
-            write codes for train
-            and return loss
-            """
-            self.cur_e = e
-
-            # 分箱看histgram
-            if self.bin_sep_lst is not None and self.is_visulized == True:
-                self.bins_id_lst = train_e_id_lst
-
-            all_loss_lst = [0.0 for _ in range(len(loss_name))]
-            for i in bar_range(self.step_per_epoch):
-                loss_lst = self.step(mode='train', train_pos_g=self.train_g, side_info=side_info, cur_step=i)
-                for j in range(len(loss_name)):
-                    if len(loss_name) == 1:
-                        loss_lst = [loss_lst]
-                    all_loss_lst[j] += loss_lst[j]
-            metric_str = f'Train Epoch: {e}\n'
-            for j in range(len(loss_name)):
-                all_loss_lst[j] /= self.step_per_epoch
-                metric_str += f'{loss_name[j]}: {all_loss_lst[j]:.4f}\t'
-            tqdm.write(self._log(metric_str))
-
-            if e % self.eval_step == 0:
-                if self.bin_sep_lst is not None:
-                    self.bins_id_lst = val_e_id_lst
-                # 在训练图上跑节点表示，在验证图上预测边的概率
-                self.metric.clear_metrics()
-                val_loss_lst = self.step(mode='evaluate', message_g=self.train_g, pred_g=self.val_pred_g, side_info=side_info)
-                self.metric.get_batch_metrics()
-                metric_str = f'Evaluate Epoch: {e}\n'
-                for j in range(len(loss_name)):
-                    if len(loss_name) == 1:
-                        val_loss_lst = [val_loss_lst]
-                    metric_str += f'{loss_name[j]}: {val_loss_lst[j]:.4f}\t'
-                metric_str += '\n'
-                metric_str = self._generate_metric_str(metric_str)
-                tqdm.write(self._log(metric_str))
-
-                # 保存最好模型
-                if self.metric.is_save:
-                    self._save_model(self.save_pth)
-                    self.metric.is_save = False
-                # 是否早停
-                if self.metric.is_early_stop and e >= self.warm_epoch:
-                    tqdm.write(self._log("Early Stop!"))
-                    break
-                else:
-                    self.metric.is_early_stop = False
-
-                if self.is_visulized:
-                    for j in range(len(loss_name)):
-                        self.writer.add_scalar(f'loss/Train_{loss_name[j]}', all_loss_lst[j], e)
-                        self.writer.add_scalar(f'loss/Val_{loss_name[j]}', val_loss_lst[j], e)
-
-            self.lr_scheduler.step()
-        tqdm.write(self._log(self.metric.print_best_metrics()))
-
-        # 开始测试
-        # 加载最优模型
-        self._load_model(self.save_pth)
-        self.metric.clear_metrics()
-
-        # 分bin
-        if self.bin_sep_lst is not None:
-            self.metric.bins_id_lst = test_e_id_lst
-            self.bins_id_lst = test_e_id_lst
-
-        # 在训练图上跑节点表示，在测试图上预测边的概率
-        loss_lst = self.step(mode='test', message_g=self.train_g, pred_g=self.test_pred_g, side_info=side_info)
-        self.metric.get_batch_metrics()
-        metric_str = f'Test Epoch: \n'
-        for j in range(len(loss_name)):
-            if len(loss_name) == 1:
-                loss_lst = [loss_lst]
-            metric_str += f'{loss_name[j]}: {loss_lst[j]:.4f}\t'
-        metric_str += '\n'
-        metric_str = self._generate_metric_str(metric_str, is_val=False)
-        tqdm.write(self._log(metric_str))
-        tqdm.write("=" * 10 + "TRAIN END" + "=" * 10)
-
-    def DEPRECATED_construct_negative_graph(self, graph, k, etype):
-        # 负采样，按用户进行
-        utype, _, vtype = etype
-        src, dst = graph.edges(etype=etype)
-        neg_src = src.repeat_interleave(k)
-
-        history_lst = self.trust_lst if vtype == utype else self.item_lst
-        total_num = self.total_user_num if vtype == utype else self.item_num
-
-        neg_samples = torch.from_numpy(neg_sampling(self.u_lst, history_lst, k, total_num)).reshape(-1, k)
-        neg_dst = neg_samples[src].reshape(-1).to(self.device)
-
-        return dgl.heterograph(
-            {etype: (neg_src, neg_dst)},
-            num_nodes_dict={ntype: graph.num_nodes(ntype) for ntype in graph.ntypes})

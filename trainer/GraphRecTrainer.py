@@ -17,7 +17,7 @@ import numpy as np
 from tqdm import tqdm, trange
 import os
 
-from .BaseTrainer import BaseTrainer, neg_sampling
+from .BaseTrainer import BaseTrainer
 
 class GraphRecTrainer(BaseTrainer):
     def __init__(
