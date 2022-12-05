@@ -159,12 +159,13 @@ def run(config, trial=None):
 
     # trainer
     model_name = config['MODEL']['model_name']
-    trainer = eval(model_name + 'Trainer')(config=config)
+    # 务必在模型对应的trainer中添加一个trial参数
+    trainer = eval(model_name + 'Trainer')(config=config, trial=trial)
     if not config['LOG']:
         with HiddenPrints():
-            metric_value = trainer.train(trial=trial)
+            metric_value = trainer.train()
     else:
-        metric_value = trainer.train(trial=trial)
+        metric_value = trainer.train()
     return metric_value
 
 

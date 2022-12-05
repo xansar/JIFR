@@ -20,5 +20,5 @@ import os
 from .BaseTrainer import BaseTrainer
 
 class LightGCNTrainer(BaseTrainer):
-    def __init__(self, config):
-        super(LightGCNTrainer, self).__init__(config)
+    def __init__(self, config, trial=None):
+        super(LightGCNTrainer, self).__init__(config, trial=trial)

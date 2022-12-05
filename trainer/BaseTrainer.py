@@ -41,7 +41,10 @@ BaseTrainer主要用来写一些通用的函数，比如打印config之类
 """
 
 class BaseTrainer:
-    def __init__(self, config):
+    def __init__(self, config, trial):
+        # 超参搜索
+        self.trial = trial
+
         self.task = config['TRAIN']['task']
         self.is_visulized = config['VISUALIZED']
         self.is_log = config['LOG']
@@ -54,12 +57,13 @@ class BaseTrainer:
         log_dir = self.config['TRAIN']['log_pth']
         if not os.path.isdir(os.path.join(log_dir, self.model_name, self.data_name)):
             os.makedirs(os.path.join(log_dir, self.model_name, self.data_name))
-        self.log_pth = os.path.join(log_dir, self.model_name, self.data_name, f'{self.task}_{self.random_seed}_{self.model_name}.txt')
+        trial_text = 'HyperParamsSearch_' if self.trial is not None else ''
+        self.log_pth = os.path.join(log_dir, self.model_name, self.data_name, f'{trial_text}{self.task}_{self.random_seed}_{self.model_name}.txt')
         # 设置保存地址
         save_dir = self.config['TRAIN']['save_pth']
         if not os.path.isdir(os.path.join(save_dir, self.model_name, self.data_name)):
             os.makedirs(os.path.join(save_dir, self.model_name, self.data_name))
-        self.save_pth = os.path.join(save_dir, self.model_name, self.data_name, f'{self.task}_{self.random_seed}_{self.model_name}.pth')
+        self.save_pth = os.path.join(save_dir, self.model_name, self.data_name, f'{trial_text}{self.task}_{self.random_seed}_{self.model_name}.pth')
         # 打印config
         self._print_config()
 
@@ -597,11 +601,11 @@ class BaseTrainer:
             all_loss_lst[j] /= len(data_loader)
         return all_loss_lst
 
-    def train(self, trial=None):
+    def train(self):
         loss_name = ['Loss']
-        return self._train(loss_name, trial=trial)
+        return self._train(loss_name)
 
-    def _train(self, loss_name, side_info: dict=None, trial=None):
+    def _train(self, loss_name, side_info: dict=None):
         # 整体训练流程
         tqdm.write(self._log("=" * 10 + "TRAIN BEGIN" + "=" * 10))
         epoch = eval(self.config['TRAIN']['epoch'])
@@ -644,10 +648,10 @@ class BaseTrainer:
                     self._save_model(self.save_pth)
                     self.metric.is_save = False
 
-                if trial is not None:
+                if self.trial is not None:
                     intermediate_value = self.metric.metric_dict[self.task][self.metric.save_metric][10]['value']
-                    trial.report(intermediate_value, e)
-                    if trial.should_prune():
+                    self.trial.report(intermediate_value, e)
+                    if self.trial.should_prune():
                         raise optuna.TrialPruned()
                 # 是否早停
                 if self.metric.is_early_stop and e >= self.warm_epoch:
