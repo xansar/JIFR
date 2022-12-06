@@ -49,8 +49,11 @@ def parse_args():
     # Parses the arguments.
     # MODEL
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('-m', '--model_name', type=str, default='MF',
+    parser.add_argument('-m', '--model_name', type=str, default='LightGCN',
                         help='Choose config')
+    parser.add_argument('-s', '--embedding_size', type=str, default='32',
+                        help='set embedding size')
+
     # DATA
     parser.add_argument('-d', '--data_name', type=str, default=None,
                         help='choose dataset')
@@ -103,6 +106,8 @@ def get_config(args):
     config = config._sections
 
     arg_class = {
+        'embedding_size': 'MODEL',
+
         'data_name': 'DATA',
         'train_neg_num': 'DATA',
         'neg_num': 'DATA',

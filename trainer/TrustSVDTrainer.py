@@ -20,8 +20,8 @@ import os
 from .BaseTrainer import BaseTrainer
 
 class TrustSVDTrainer(BaseTrainer):
-    def __init__(self, config,):
-        super(TrustSVDTrainer, self).__init__(config)
+    def __init__(self, config, trial=None):
+        super(TrustSVDTrainer, self).__init__(config, trial=trial)
 
     def step(self, mode='train', **inputs):
         # 模型单步计算
@@ -70,4 +70,4 @@ class TrustSVDTrainer(BaseTrainer):
 
     def train(self):
         loss_name = ['loss', 'rate_loss', 'reg_loss', 'link_loss']
-        self._train(loss_name)
+        return self._train(loss_name)

@@ -24,14 +24,12 @@ import random
 
 # 设置全局变量
 SEED = 2022  # 占位，会重新抽
-EPOCH = 1
 ARGS = None
 
 def objective(trial):
     global ARGS, EPOCH, SEED
     config = get_config(ARGS)
-    # 统一设置epoch为50，重新抽取randomseed
-    config['TRAIN']['epoch'] = str(EPOCH)
+    # 重新抽取randomseed
     SEED = random.randint(0, 999999)
     config['TRAIN']['random_seed'] = str(SEED)
     random.seed(SEED)
@@ -40,6 +38,8 @@ def objective(trial):
     config['OPTIM']['embedding_weight_decay'] = str(trial.suggest_float('embedding_weight_decay', 1e-3, 1e1, log=True))
     if 'mlp_weight_decay' in config['OPTIM'].keys():    # 不对mlp embedding做正则化
         config['OPTIM']['mlp_learning_rate'] = str(trial.suggest_float('mlp_learning_rate', 1e-3, 1e0, log=True))
+    if 'lamda_t' in config['OPTIM'].keys():    # trustsvd link loss 系数
+        config['OPTIM']['lamda_t'] = str(trial.suggest_float('lamda_t', 1e-2, 1e1, log=True))
 
     # 学习率只衰减不重启
     config['OPTIM']['T_0'] = str(config['TRAIN']['epoch'])
@@ -90,11 +90,14 @@ def visulization(study, model_name, data_name, save_dir=None):
         f.write(f'best nDCG: {study.best_value}\n')
         print(f'best nDCG: {study.best_value}')
 
-def search(model_name, data_name, n_trials):
+def search(model_name, data_name, epoch, batch_size, n_trials):
     global ARGS
     ARGS = parse_args()
     ARGS.model_name = model_name
     ARGS.data_name = data_name
+    ARGS.epoch = epoch
+    ARGS.train_batch_size = batch_size
+    ARGS.eval_batch_size = batch_size
 
     study = single_search(model_name, n_trials)
     visulization(study, model_name=model_name, data_name=data_name, save_dir='./params_search')
@@ -103,6 +106,12 @@ def search(model_name, data_name, n_trials):
     )
 
 if __name__ == '__main__':
-    search('LightGCN', 'Epinions', 2)
+    search(
+        model_name='TrustSVD',
+        data_name='Epinions',
+        batch_size=10240,
+        epoch=1,   # 每次实验运行的epoch数
+        n_trials=2
+    )
 
 

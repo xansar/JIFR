@@ -74,8 +74,8 @@ class LightGCNModel(nn.Module):
                     embeddings = layer(messege_g, embeddings)
                 res_embedding['user'] = res_embedding['user'] + embeddings['user']
                 res_embedding['item'] = res_embedding['item'] + embeddings['item']
-            res_embedding['user'] /= (1 / len(self.layers))
-            res_embedding['item'] /= (1 / len(self.layers))
+            res_embedding['user'] /= len(self.layers) + 1
+            res_embedding['item'] /= len(self.layers) + 1
         else:
             original_embedding = self.embedding(input_nodes)
             dst_user = pos_pred_g.dstnodes(ntype='user')
@@ -94,8 +94,8 @@ class LightGCNModel(nn.Module):
                         embeddings = layer(blocks[j], embeddings)
                 res_embedding['user'] = res_embedding['user'] + embeddings['user']
                 res_embedding['item'] = res_embedding['item'] + embeddings['item']
-            res_embedding['user'] /= (1 / len(self.layers))
-            res_embedding['item'] /= (1 / len(self.layers))
+            res_embedding['user'] /= len(self.layers) + 1
+            res_embedding['item'] /= len(self.layers) + 1
         pos_score = self.pred(pos_pred_g, res_embedding, 'rate')
         neg_score = self.pred(neg_pred_g, res_embedding, 'rate')
         return pos_score, neg_score
