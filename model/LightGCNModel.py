@@ -52,23 +52,13 @@ class LightGCNModel(nn.Module):
         init_weights(self.modules())
 
     def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
-        # idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
-        # res_embedding = self.embedding(idx)
-        # for i, layer in enumerate(self.layers):
-        #     if i == 0:
-        #         embeddings = layer(messege_g, res_embedding)
-        #     else:
-        #         embeddings = layer(messege_g, embeddings)
-        #     # print(embeddings)
-        #     # print(res_embedding['user'].shape, embeddings['user'].shape)
-        #     # print(res_embedding['item'].shape, embeddings['item'].shape)
-        #     res_embedding['user'] = res_embedding['user'] + embeddings['user'] * (1 / (i + 2))
-        #     res_embedding['item'] = res_embedding['item'] + embeddings['item'] * (1 / (i + 2))
-        # pos_score = self.pred(pos_pred_g, res_embedding, 'rate')
-        # neg_score = self.pred(neg_pred_g, res_embedding, 'rate')
-
         if input_nodes is None:
-            idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+            if '_ID' in messege_g.ndata.keys():
+                # 子图采样的情况
+                idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+            else:
+                # 全图的情况
+                idx = {ntype: messege_g.nodes(ntype=ntype) for ntype in messege_g.ntypes}
             res_embedding = self.embedding(idx)
             for i, layer in enumerate(self.layers):
                 if i == 0:

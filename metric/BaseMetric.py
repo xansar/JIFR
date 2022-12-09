@@ -26,7 +26,11 @@ class BaseMetric:
         self.metric_cnt = 0
         self.iter_step = 0
         self.eval_step = eval(config['TRAIN']['eval_step'])
-        self.batch_size = eval(config['DATA']['eval_batch_size'])
+        if not 'step_per_epoch' in config['TRAIN'].keys():
+            assert 'eval_batch_size' in config['DATA'].keys()
+            self.batch_size = eval(config['DATA']['eval_batch_size'])
+        else:
+            self.batch_size = None
         self.warm_epoch = eval(config['TRAIN']['warm_epoch'])
         self.early_stop_last = -1
 
@@ -128,6 +132,15 @@ class BaseMetric:
                 metric_str += '\n'
         return metric_str
 
+    def _get_batch_id_lst(self, id_lst):
+        if self.batch_size is not None:
+            left_eid = self.iter_step * self.batch_size
+            right_eid = (self.iter_step + 1) * self.batch_size
+            id_lst = torch.masked_select(id_lst, (id_lst >= left_eid) & (id_lst < right_eid))
+            # 将原始的边id映射到当前batch
+            id_lst = id_lst - left_eid
+        return id_lst
+
     def _compute_HR(self, total_pred, target_idx, task):
         for k in self.ks:
             _, topk_id = torch.topk(total_pred, k)
@@ -144,11 +157,13 @@ class BaseMetric:
                     # batch 的情况
                     # 这一批次的eid范围是 self.iter_step * batch_size: (self.iter_step + 1) * batch_size
                     # 因此需要把id_lst中这一部分的eid取出来，左闭右开
-                    left_eid = self.iter_step * self.batch_size
-                    right_eid = (self.iter_step + 1) * self.batch_size
-                    id_lst = torch.masked_select(id_lst, (id_lst >= left_eid) & (id_lst < right_eid))
-                    # 将原始的边id映射到当前batch
-                    id_lst = id_lst - left_eid
+                    id_lst = self._get_batch_id_lst(id_lst)
+                    # if self.batch_size is not None:
+                    #     left_eid = self.iter_step * self.batch_size
+                    #     right_eid = (self.iter_step + 1) * self.batch_size
+                    #     id_lst = torch.masked_select(id_lst, (id_lst >= left_eid) & (id_lst < right_eid))
+                    #     # 将原始的边id映射到当前batch
+                    #     id_lst = id_lst - left_eid
 
                     hit_bin = hit[id_lst].sum()
                     self.metric_dict[task]['HR'][k]['bin_value'][i] += hit_bin.item()
@@ -171,11 +186,13 @@ class BaseMetric:
                     # batch 的情况
                     # 这一批次的eid范围是 self.iter_step * batch_size: (self.iter_step + 1) * batch_size
                     # 因此需要把id_lst中这一部分的eid取出来，左闭右开
-                    left_eid = self.iter_step * self.batch_size
-                    right_eid = (self.iter_step + 1) * self.batch_size
-                    id_lst = torch.masked_select(id_lst, (id_lst >= left_eid) & (id_lst < right_eid))
-                    # 将原始的边id映射到当前batch
-                    id_lst = id_lst - left_eid
+                    id_lst = self._get_batch_id_lst(id_lst)
+                    # if self.batch_size is not None:
+                    #     left_eid = self.iter_step * self.batch_size
+                    #     right_eid = (self.iter_step + 1) * self.batch_size
+                    #     id_lst = torch.masked_select(id_lst, (id_lst >= left_eid) & (id_lst < right_eid))
+                    #     # 将原始的边id映射到当前batch
+                    #     id_lst = id_lst - left_eid
 
                     nDCG_bin = nDCG[id_lst].sum()
                     self.metric_dict[task]['nDCG'][k]['bin_value'][i] += nDCG_bin.item()

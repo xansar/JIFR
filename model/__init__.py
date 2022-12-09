@@ -10,7 +10,7 @@
 """
 
 # import lib
-from .loss import *
+from .utils import *
 
 # without social
 from .MFModel import *

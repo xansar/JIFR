@@ -34,12 +34,12 @@ class DiffusionLayer(nn.Module):
         self.num_heads = num_heads
         super(DiffusionLayer, self).__init__()
         self.interest_diffusion_layer = dglnn.HeteroGraphConv({
-            rel: dglnn.GATv2Conv(self.embedding_size, self.embedding_size, num_heads=self.num_heads, attn_drop=0.5, feat_drop=0.5)
+            rel: dglnn.GATv2Conv(self.embedding_size, self.embedding_size, num_heads=self.num_heads)
             for rel in rel_names
         })
 
         self.influence_diffusion_layer = dglnn.HeteroGraphConv({
-            rel: dglnn.GATv2Conv(self.embedding_size, self.embedding_size, num_heads=self.num_heads, attn_drop=0.5, feat_drop=0.5)
+            rel: dglnn.GATv2Conv(self.embedding_size, self.embedding_size, num_heads=self.num_heads)
             for rel in rel_names
         })
         self.att_score_influence = nn.Sequential(
@@ -156,7 +156,12 @@ class DiffnetPPModel(nn.Module):
 
     def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:
-            idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+            if '_ID' in messege_g.ndata.keys():
+                # 子图采样的情况
+                idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+            else:
+                # 全图的情况
+                idx = {ntype: messege_g.nodes(ntype=ntype) for ntype in messege_g.ntypes}
             # res_embedding = self.fusion_layer(self.embedding(idx))
             res_embedding = self.embedding(idx)
             for i, layer in enumerate(self.diffusion_layers):

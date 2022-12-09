@@ -69,7 +69,12 @@ class TrustSVDModel(nn.Module):
 
     def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:
-            input_nodes = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+            if '_ID' in messege_g.ndata.keys():
+                # 子图采样的情况
+                input_nodes = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+            else:
+                # 全图的情况
+                input_nodes = {ntype: messege_g.nodes(ntype=ntype) for ntype in messege_g.ntypes}
         else:
             messege_g = messege_g[0]
         y_w = self.y_w_embedding(input_nodes)  # {'user': w, 'item': y}

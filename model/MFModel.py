@@ -45,7 +45,12 @@ class MFModel(nn.Module):
     def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:
             # 训练时，在图上训练，不需要区分block
-            idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+            if '_ID' in messege_g.ndata.keys():
+                # 子图采样的情况
+                idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+            else:
+                # 全图的情况
+                idx = {ntype: messege_g.nodes(ntype=ntype) for ntype in messege_g.ntypes}
             if self.task == 'Link':
                 etype = 'trust'
                 res_embedding = self.embedding(idx)['user']
@@ -55,7 +60,7 @@ class MFModel(nn.Module):
         else:
             # 测试时需要注意block
             if self.task == 'Link':
-                res_embedding = self.embedding({'user': input_nodes})
+                res_embedding = self.embedding({'user': input_nodes})   # block的情况
                 etype = 'trust'
                 dst_user = messege_g[0].dstnodes(ntype='user')
                 res_embedding = res_embedding['user'][dst_user]

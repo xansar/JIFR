@@ -51,7 +51,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run Model.")
     parser.add_argument('-m', '--model_name', type=str, default='LightGCN',
                         help='Choose config')
-    parser.add_argument('-s', '--embedding_size', type=str, default='32',
+    parser.add_argument('-s', '--embedding_size', type=str, default=None,
                         help='set embedding size')
 
     # DATA
@@ -105,6 +105,9 @@ def get_config(args):
     config.read('./config/' + model + '.ini', encoding='utf-8')
     config = config._sections
 
+    config.update({'VISUALIZED': args.visulize})
+    config.update({'LOG': args.log})
+
     arg_class = {
         'embedding_size': 'MODEL',
 
@@ -147,9 +150,6 @@ def get_config(args):
     data_info = get_data_info(data_name)
     config['DATA']['data_name'] = data_name
     config['MODEL'].update(data_info)
-
-    config.update({'VISUALIZED': args.visulize})
-    config.update({'LOG': args.log})
     return config
 
 def get_data_info(data_name):

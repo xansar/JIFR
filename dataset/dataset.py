@@ -28,15 +28,17 @@ class DGLRecDataset(DGLDataset):
         self.data_name = config['DATA']['data_name']
         self.data_pth = os.path.join('./data', self.data_name, 'splited_data')
         self.dir_pth = os.path.join(self.data_pth, 'cache')
+        self.is_log = config['LOG']
+        self.print_info = print if self.is_log else lambda x: None
         if not os.path.isdir(self.dir_pth):
             os.makedirs(self.dir_pth)
 
-        print('=' * 20 + 'begin process' + '=' * 20)
+        self.print_info('=' * 20 + 'begin process' + '=' * 20)
         if self.has_cache() is False:
             self.process()
         else:
             self.load()
-            print('=' * 20 + 'load graph finished' + '=' * 20)
+            self.print_info('=' * 20 + 'load graph finished' + '=' * 20)
 
         super(DGLRecDataset, self).__init__(name=self.data_name)
 
@@ -86,7 +88,7 @@ class DGLRecDataset(DGLDataset):
             u1 = np.concatenate([u1, record['link'][mode][:, 0]])
             v = np.concatenate([v, record['link'][mode][:, 1]])
 
-        print('=' * 20 + 'read rate data finished' + '=' * 20)
+        self.print_info('=' * 20 + 'read rate data finished' + '=' * 20)
         self.train_rate_size = len(record['rate']['train'])
         self.train_link_size = len(record['link']['train'])
         self.val_rate_size = len(record['rate']['val'])
@@ -110,11 +112,11 @@ class DGLRecDataset(DGLDataset):
         self._g.edges['rate'].data['rating'] = torch.tensor(r, dtype=torch.long)
         self._g.edges['rated-by'].data['rating'] = torch.tensor(r, dtype=torch.long)
 
-        print('=' * 20 + 'construct graph finished' + '=' * 20)
+        self.print_info('=' * 20 + 'construct graph finished' + '=' * 20)
 
         # 保存
         self.save()
-        print('=' * 20 + 'save graph finished' + '=' * 20)
+        self.print_info('=' * 20 + 'save graph finished' + '=' * 20)
 
     def has_cache(self):
         is_graph = os.path.exists(os.path.join(self.dir_pth,
