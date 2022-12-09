@@ -13,6 +13,16 @@
 import torch
 import torch.nn as nn
 from torch.nn import MSELoss, CrossEntropyLoss, BCELoss
+
+
+def init_weights(modules):
+    for m in modules:
+        if isinstance(m, nn.Linear):
+            nn.init.normal_(m.weight, mean=0, std=0.01)
+            nn.init.zeros_(m.bias)
+        elif isinstance(m, nn.Embedding):
+            nn.init.normal_(m.weight, mean=0, std=0.01)
+
 class BPRLoss(nn.Module):
     def __init__(self, reduction='mean'):
         self.reduction = reduction

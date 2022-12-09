@@ -15,6 +15,8 @@ import torch.nn as nn
 import dgl.nn.pytorch as dglnn
 import dgl.function as fn
 
+from .utils import init_weights
+
 
 class HeteroDotProductPredictor(nn.Module):
     def forward(self, graph, h, etype):
@@ -150,15 +152,7 @@ class DiffnetPPModel(nn.Module):
             self.diffusion_layers.append(DiffusionLayer(rel_names, self.embedding_size, self.num_heads))
 
         self.pred = HeteroDotProductPredictor()
-        self.init_weights()
-
-    def init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, mean=0, std=0.01)
-                nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.Embedding):
-                nn.init.normal_(m.weight, mean=0, std=0.01)
+        init_weights(self.modules())
 
     def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:

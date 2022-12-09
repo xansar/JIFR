@@ -15,6 +15,8 @@ import torch.nn as nn
 import dgl.nn.pytorch as dglnn
 import dgl.function as fn
 
+from .utils import init_weights
+
 
 class HeteroDotProductPredictor(nn.Module):
     def forward(self, graph, etype, h, b=None):
@@ -61,6 +63,7 @@ class TrustSVDModel(nn.Module):
         })
         self.global_bias = nn.Parameter(torch.tensor(global_bias), requires_grad=True)
         self.pred = HeteroDotProductPredictor()
+        init_weights(self.modules())
 
         self.reg_loss = RegLoss(lamda=self.lamda, lamda_t=self.lamda_t)
 
@@ -76,6 +79,7 @@ class TrustSVDModel(nn.Module):
         src_item = messege_g.srcnodes(ntype='item')
         dst_user = messege_g.dstnodes(ntype='user')
         dst_item = messege_g.dstnodes(ntype='item')
+
         I_u_mask = (messege_g.out_degrees(etype='rate') > 0).float()[dst_user]
         I_u_factor = (I_u_mask / torch.sqrt(messege_g.out_degrees(etype='rate').clamp(min=1))[dst_user]).reshape(-1, 1)
         normed_y = I_u_factor * self.y_gcn(messege_g,

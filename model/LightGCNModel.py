@@ -15,6 +15,8 @@ import torch.nn as nn
 import dgl.nn.pytorch as dglnn
 import dgl.function as fn
 
+from .utils import init_weights
+
 
 class HeteroDotProductPredictor(nn.Module):
     def forward(self, graph, h, etype):
@@ -47,6 +49,7 @@ class LightGCNModel(nn.Module):
                 })
             )
         self.pred = HeteroDotProductPredictor()
+        init_weights(self.modules())
 
     def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
         # idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
