@@ -21,6 +21,7 @@ from .TrustSVDModel import *
 from .SVDPPModel import *
 from .SorecModel import *
 from .SocialMFModel import *
+from .NJBPModel import *
 
 # gnn social
 from .MutualRecModel import *

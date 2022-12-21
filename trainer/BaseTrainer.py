@@ -30,7 +30,7 @@ import json
 import copy
 
 cf_model = ['LightGCN', 'MF']
-social_model = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec']
+social_model = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec', 'NJBP']
 directed_social_model = ['TrustSVD', 'SVDPP', 'Sorec', 'SocialMF']
 link_model = ['AA', 'Node2Vec']
 
@@ -237,7 +237,7 @@ class BaseTrainer:
 
     def _get_graphs_and_eids(self, mode='full_graph'):
         assert mode in ['full_graph', 'data_loader']
-        assert self.task == 'Rate' or self.task == 'Link'
+        # assert self.task == 'Rate' or self.task == 'Link'
         # 如果是joint还需要改写，因为验证时rate和link各需要一个dataloader
         s_e_dict = {
             'train': {
@@ -261,6 +261,8 @@ class BaseTrainer:
 
         if self.task == 'Rate':
             pred_etypes = [('user', 'rate', 'item')]
+        elif self.task == 'Joint':
+            pred_etypes = [('user', 'rate', 'item'), ('user', 'trust', 'user')]
         else:
             pred_etypes = [('user', 'trust', 'user')]
         # else:   # Joint
@@ -287,29 +289,32 @@ class BaseTrainer:
         test_pred_g = dgl.edge_subgraph(self.g, eid_dict['test'], relabel_nodes=False)
         # 全图的情况：直接返回需要预测的图
         if mode == 'full_graph':
-            # assert set(message_g.ntypes) == set(val_pred_g.ntypes) == set(test_pred_g.ntypes)
-            # for ntype in message_g.ntypes:
-            #     message_g.nodes[ntype].data['_ID'] = message_g.nodes(ntype=ntype)
-            #     val_pred_g.nodes[ntype].data['_ID'] = val_pred_g.nodes(ntype=ntype)
-            #     test_pred_g.nodes[ntype].data['_ID'] = test_pred_g.nodes(ntype=ntype)
             return message_g, val_pred_g, test_pred_g, None
 
         # 包含了消息边的测试图
-        e = pred_etypes[0]
-        # 这里，pred边被加到message边后面
+        eid_dict_for_dataloader = {}
         val_g = message_g.clone()
-        val_g.add_edges(*val_pred_g.edges(etype=e), etype=e)
         test_g = message_g.clone()
-        test_g.add_edges(*test_pred_g.edges(etype=e), etype=e)
+        for e in pred_etypes:
+            # e = pred_etypes[0]
+            # 这里，pred边被加到message边后面
+            val_g.add_edges(*val_pred_g.edges(etype=e), etype=e)
+            test_g.add_edges(*test_pred_g.edges(etype=e), etype=e)
 
-        train_size = len(eid_dict['train'][pred_etypes[0]])
-        val_size = len(eid_dict['val'][pred_etypes[0]])
-        test_size = len(eid_dict['test'][pred_etypes[0]])
-        eid_dict_for_dataloader = {
-            'train': {e: range(train_size)},  # 只选择一种边计数，避免对比时joint模型训练时间更长
-            'val': {e: range(train_size, train_size + val_size)},
-            'test': {e: range(train_size, train_size + test_size)},
-        }
+            train_size = len(eid_dict['train'][e])
+            val_size = len(eid_dict['val'][e])
+            test_size = len(eid_dict['test'][e])
+            if len(eid_dict_for_dataloader) == 0:
+                eid_dict_for_dataloader = {
+                    'train': {e: range(train_size)},  # 只选择一种边计数，避免对比时joint模型训练时间更长
+                    'val': {e: range(train_size, train_size + val_size)},
+                    'test': {e: range(train_size, train_size + test_size)},
+                }
+            else:
+                eid_dict_for_dataloader['train'].update({e: range(train_size)})
+                eid_dict_for_dataloader['val'].update({e: range(train_size)})
+                eid_dict_for_dataloader['test'].update({e: range(train_size)})
+
         return message_g, val_g, test_g, eid_dict_for_dataloader
 
     def _get_loader(self, mode, g, eid_dict, batch_size, num_workers, is_shuffle, **other_args):
@@ -475,7 +480,11 @@ class BaseTrainer:
 
     def _save_model(self, save_pth):
         # 保存最好模型
-        best_value = self.metric.metric_dict[self.task][self.metric.save_metric][10]['best']
+        if self.task == 'Joint':
+            task = 'Rate'
+        else:
+            task = self.task
+        best_value = self.metric.metric_dict[task][self.metric.save_metric][10]['best']
         self.print_info(self._log(f"Save Best {self.metric.save_metric} {best_value:.4f} Model!"))
         dir_pth, _ = os.path.split(save_pth)
         if not os.path.isdir(dir_pth):
@@ -486,7 +495,11 @@ class BaseTrainer:
         torch.save(self.model.state_dict(), save_pth)
 
     def _load_model(self, save_pth, strict=False):
-        best_value = self.metric.metric_dict[self.task][self.metric.save_metric][10]['best']
+        if self.task == 'Joint':
+            task = 'Rate'
+        else:
+            task = self.task
+        best_value = self.metric.metric_dict[task][self.metric.save_metric][10]['best']
         self.print_info(self._log(f"Load Best {self.metric.save_metric} {best_value:.4f} Model!"))
         state_dict = torch.load(save_pth)
         self.model.load_state_dict(state_dict, strict=strict)
@@ -563,35 +576,52 @@ class BaseTrainer:
         return None
 
     def construct_negative_graph(self, g, k, etype):
-        # 负采样，按用户进行
-        src_ntype, edge_type, dst_ntype = etype
-        relabeled_src, relabeled_dst = g.edges(etype=etype)
-        neg_src = relabeled_src.repeat_interleave(k)
-        if '_ID' in g.nodes[src_ntype].data.keys():
-            # 子图采样的情况
-            src = g.nodes[src_ntype].data['_ID'][relabeled_src]
+        if isinstance(etype, list):
+            # 递归生成两个边类型的负采样图，然后合并
+            subg_1 = self.construct_negative_graph(g, k, etype[0])
+            subg_2 = self.construct_negative_graph(g, k, etype[1])
+            graph_data = {
+                etype[0]: subg_1.edges(etype=etype[0]),
+                etype[1]: subg_2.edges(etype=etype[1]),
+            }
+            num_nodes = {
+                'user': subg_2.num_nodes(ntype='user'),
+                'item': subg_1.num_nodes(ntype='item'),
+            }
+            return dgl.heterograph(
+                graph_data,
+                num_nodes_dict=num_nodes
+            )
         else:
-            # 全图的情况
-            src = relabeled_src
+            # 负采样，按用户进行
+            src_ntype, edge_type, dst_ntype = etype
+            relabeled_src, relabeled_dst = g.edges(etype=etype)
+            neg_src = relabeled_src.repeat_interleave(k)
+            if '_ID' in g.nodes[src_ntype].data.keys():
+                # 子图采样的情况
+                src = g.nodes[src_ntype].data['_ID'][relabeled_src]
+            else:
+                # 全图的情况
+                src = relabeled_src
 
-        if isinstance(self.train_loader, range):
-            # 全图的情况：在全图负采样
-            neg_samples = torch.from_numpy(
-                total_neg_sampling(self.u_lst, self.history_lst[edge_type], k, self.total_num[edge_type]).reshape(-1, k))
-            neg_dst = neg_samples[src].reshape(-1).to(g.device)
-        else:
-            # 子图采样的情况：在子图内负采样
-            unique_u, idx_in_u_lst = torch.unique(src, return_inverse=True)
-            u_lst = nList(unique_u.tolist())
-            map_array = g.nodes[dst_ntype].data['_ID'].detach().cpu().numpy()
-            neg_samples = torch.from_numpy(
-                subg_neg_sampling(u_lst, self.history_lst[edge_type], map_array, k).reshape(-1, k))
-            neg_dst = neg_samples[idx_in_u_lst].reshape(-1).to(g.device)
+            if isinstance(self.train_loader, range):
+                # 全图的情况：在全图负采样
+                neg_samples = torch.from_numpy(
+                    total_neg_sampling(self.u_lst, self.history_lst[edge_type], k, self.total_num[edge_type]).reshape(-1, k))
+                neg_dst = neg_samples[src].reshape(-1).to(g.device)
+            else:
+                # 子图采样的情况：在子图内负采样
+                unique_u, idx_in_u_lst = torch.unique(src, return_inverse=True)
+                u_lst = nList(unique_u.tolist())
+                map_array = g.nodes[dst_ntype].data['_ID'].detach().cpu().numpy()
+                neg_samples = torch.from_numpy(
+                    subg_neg_sampling(u_lst, self.history_lst[edge_type], map_array, k).reshape(-1, k))
+                neg_dst = neg_samples[idx_in_u_lst].reshape(-1).to(g.device)
 
-        return dgl.heterograph(
-            {etype: (neg_src, neg_dst)},
-            num_nodes_dict={ntype: g.num_nodes(ntype) for ntype in g.ntypes}
-        )
+            return dgl.heterograph(
+                {etype: (neg_src, neg_dst)},
+                num_nodes_dict={ntype: g.num_nodes(ntype) for ntype in g.ntypes}
+            )
 
     def step(self, mode='train', **inputs):
         # 模型单步计算
@@ -599,6 +629,8 @@ class BaseTrainer:
             etype = ('user', 'rate', 'item')
         elif self.task == 'Link':
             etype = ('user', 'trust', 'user')
+        else:
+            etype = [('user', 'rate', 'item'), ('user', 'trust', 'user')]
 
         if mode == 'train':
             if isinstance(inputs['graphs'], int):
@@ -609,19 +641,28 @@ class BaseTrainer:
             train_neg_g = self.construct_negative_graph(train_pos_g, self.train_neg_num, etype=etype)
             self.model.train()
             self.optimizer.zero_grad()
-            pos_pred, neg_pred = self.model(
+            output = self.model(
                 train_pos_g,
                 train_pos_g,
                 train_neg_g,
             )
-            neg_pred = neg_pred.reshape(-1, self.train_neg_num)
-            if self.bin_sep_lst is not None and self.is_visulized == True:
-                if cur_step == 0:
-                    self.log_pred_histgram(pos_pred, neg_pred, mode)
-            loss = self.loss_func(pos_pred, neg_pred)
-            loss.backward()
-            self.optimizer.step()
-            return loss.item()
+            if len(output) == 2:
+                pos_pred, neg_pred = output
+                neg_pred = neg_pred.reshape(-1, self.train_neg_num)
+                loss = self.loss_func(pos_pred, neg_pred)
+                loss.backward()
+                self.optimizer.step()
+                return loss.item()
+            else:
+                pos_rate_pred, neg_rate_pred, pos_link_pred, neg_link_pred = output
+                neg_rate_pred = neg_rate_pred.reshape(-1, self.train_neg_num)
+                neg_link_pred = neg_link_pred.reshape(-1, self.train_neg_num)
+                rate_loss = self.loss_func(pos_rate_pred, neg_rate_pred)
+                link_loss = self.loss_func(pos_link_pred, neg_link_pred)
+                loss = rate_loss + link_loss
+                loss.backward()
+                self.optimizer.step()
+                return loss.item(), rate_loss.item(), link_loss.item()
         elif mode == 'evaluate' or mode == 'test':
             with torch.no_grad():
                 if isinstance(inputs['graphs'], int):
@@ -642,23 +683,47 @@ class BaseTrainer:
                     neg_pred_g = neg_pred_g.to(self.device)
 
                 self.model.eval()
-                pos_pred, neg_pred = self.model(
+                output = self.model(
                     message_g,
                     pos_pred_g,
                     neg_pred_g,
                     input_nodes
                 )
-                neg_pred = neg_pred.reshape(-1, self.neg_num)
-                if self.bin_sep_lst is not None and self.is_visulized == True:
-                    self.log_pred_histgram(pos_pred, neg_pred, mode)
-                loss = self.loss_func(pos_pred, neg_pred)
-                self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu(), task=self.task)
-                return loss.item()
+                if len(output) == 2:
+                    pos_pred, neg_pred = output
+                    neg_pred = neg_pred.reshape(-1, self.neg_num)
+                    loss = self.loss_func(pos_pred, neg_pred)
+                    self.metric.compute_metrics(pos_pred.cpu(), neg_pred.cpu(), task=self.task)
+                    return loss.item()
+                else:
+                    pos_rate_pred, neg_rate_pred, pos_link_pred, neg_link_pred = output
+                    neg_rate_pred = neg_rate_pred.reshape(-1, self.neg_num)
+                    neg_link_pred = neg_link_pred.reshape(-1, self.neg_num)
+                    if len(pos_rate_pred) != 0:
+                        rate_loss = self.loss_func(pos_rate_pred, neg_rate_pred)
+                        self.metric.compute_metrics(pos_rate_pred.cpu(), neg_rate_pred.cpu(), task='Rate')
+                    else:
+                        rate_loss = torch.tensor(-1, dtype=torch.float, device=pos_rate_pred.device)
+
+                    if len(pos_link_pred) != 0:
+                        link_loss = self.loss_func(pos_link_pred, neg_link_pred)
+                        self.metric.compute_metrics(pos_link_pred.cpu(), neg_link_pred.cpu(), task='Link')
+                    else:
+                        link_loss = torch.tensor(-1, dtype=torch.float, device=pos_link_pred.device)
+                    if link_loss == -1:
+                        loss = rate_loss
+                    elif rate_loss == -1:
+                        loss = link_loss
+                    else:
+                        loss = rate_loss + link_loss
+                    return loss.item(), rate_loss.item(), link_loss.item()
         else:
             raise ValueError("Wrong Mode")
 
     def wrap_step_loop(self, mode, data_loader: dgl.dataloading.DataLoader or range, side_info, loss_name):
         all_loss_lst = [0.0 for _ in range(len(loss_name))]
+
+        val_true_batch_cnt = [0 for _ in range(len(loss_name))]
         if self.is_log:
             bar_loader = tqdm(enumerate(data_loader), total=len(data_loader))
         else:
@@ -672,16 +737,32 @@ class BaseTrainer:
             for j in range(len(loss_name)):
                 if len(loss_name) == 1:
                     loss_lst = [loss_lst]
-                all_loss_lst[j] += loss_lst[j]
+                # 因为如果需要测试两种边，dataloader会依次读入两种类型，如果此时将没有出现的loss记为0，会导致数据不准
+                # 做法是，rate批次设置link loss为0，link批次设置rate loss为0
+                # 因此，需要记录rate批次和link批次的次数，一个epoch完成后再进行校正
+                if loss_lst[j] != -1:
+                    val_true_batch_cnt[j] += 1
+                    all_loss_lst[j] += loss_lst[j]
+                else:
+                    all_loss_lst[j] += 0
             if mode != 'train':
                 self.metric.iter_step += 1
 
         for j in range(len(loss_name)):
-            all_loss_lst[j] /= len(data_loader)
+            # if val_true_batch_cnt[j] != 0:
+            #     # 说明loss需要校正
+            #     all_loss_lst[j] /= len(data_loader)
+            # all_loss_lst[j] /= len(data_loader)
+
+            # 如果出现rate和link的数量和不等于total的，不用担心，因为会有一个batch包含两类边
+            all_loss_lst[j] /= val_true_batch_cnt[j]
         return all_loss_lst
 
     def train(self):
-        loss_name = ['Loss']
+        if self.task == 'Joint':
+            loss_name = ['Total Loss', 'Rate Loss', 'Link Loss']
+        else:
+            loss_name = ['Loss']
         return self._train(loss_name)
 
     def _train(self, loss_name, side_info: dict=None):
@@ -768,5 +849,9 @@ class BaseTrainer:
         self.print_info(self._log(metric_str))
         self.print_info("=" * 10 + "TRAIN END" + "=" * 10)
 
-        test_nDCG10 = self.metric.metric_dict[self.task][self.metric.save_metric][10]['value']
+        if self.task == 'Joint':
+            task = 'Rate'
+        else:
+            task = self.task
+        test_nDCG10 = self.metric.metric_dict[task][self.metric.save_metric][10]['value']
         return test_nDCG10

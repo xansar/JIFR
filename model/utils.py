@@ -12,7 +12,7 @@
 # import lib
 import torch
 import torch.nn as nn
-from torch.nn import MSELoss, CrossEntropyLoss, BCELoss
+from torch.nn import MSELoss, CrossEntropyLoss, BCELoss, BCEWithLogitsLoss
 
 
 def init_weights(modules):
