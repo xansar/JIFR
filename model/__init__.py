@@ -15,6 +15,7 @@ from .utils import *
 # without social
 from .MFModel import *
 from .LightGCNModel import *
+from .NCLModel import *
 
 # classical social
 from .TrustSVDModel import *
@@ -28,6 +29,7 @@ from .MutualRecModel import *
 from .FusionLightGCNModel import *
 from .DiffnetPPModel import *
 from .GraphRecModel import *
+from .SocialLGNModel import *
 
 # link
 from .AAModel import *

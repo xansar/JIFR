@@ -13,6 +13,7 @@ from .utils import *
 # without social
 from .MFTrainer import *
 from .LightGCNTrainer import *
+from .NCLTrainer import *
 
 # classical social
 from .TrustSVDTrainer import *
@@ -26,6 +27,7 @@ from .FusionLightGCNTrainer import *
 from .DiffnetPPTrainer import *
 from .MutualRecTrainer import *
 from .GraphRecTrainer import *
+from .SocialLGNTrainer import *
 
 # link
 from .AATrainer import *

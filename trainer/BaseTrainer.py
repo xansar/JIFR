@@ -29,8 +29,8 @@ import os
 import json
 import copy
 
-cf_model = ['LightGCN', 'MF']
-social_model = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec', 'NJBP']
+cf_model = ['LightGCN', 'MF', 'NCL']
+social_model = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec', 'NJBP', 'SocialLGN']
 directed_social_model = ['TrustSVD', 'SVDPP', 'Sorec', 'SocialMF']
 link_model = ['AA', 'Node2Vec']
 
@@ -189,38 +189,6 @@ class BaseTrainer:
             self.val_pred_g = val_g.to(self.device)
             self.test_pred_g = test_g.to(self.device)
 
-        # message_g, val_g, test_g, eids_dict = self._get_graphs_and_eids()
-        # # 分bin测试用
-        # if self.bin_sep_lst is not None:
-        #     self.train_e_id_lst, self.val_e_id_lst, self.test_e_id_lst = self.get_bins_eid_lst(
-        #         message_g, val_g, test_g, eids_dict)
-        #
-        # self._get_history_lst()
-        # # eids_dict = self._get_eids()
-        # if eids_dict is None:
-        #     assert 'step_per_epoch' in self.config['TRAIN'].keys()
-        #     # step_per_epoch是迭代的次数
-        #     self.train_loader = range(eval(self.config['TRAIN']['step_per_epoch']))
-        #     self.val_loader = range(1)
-        #     self.test_loader = range(1)
-        #     self.message_g = message_g.to(self.device)
-        #     self.val_pred_g = val_g.to(self.device)
-        #     self.test_pred_g = test_g.to(self.device)
-        # else:
-        #     self.train_loader = self._get_loader(mode='train', g=message_g, eid_dict=eids_dict['train'],
-        #                                          batch_size=train_batch_size, num_workers=num_workers, is_shuffle=True,
-        #                                          budget=budget)
-        #
-        #     self.val_loader = self._get_loader(mode='evaluate', g=val_g, eid_dict=eids_dict['val'],
-        #                                        batch_size=val_batch_size, num_workers=0, is_shuffle=False,
-        #                                        num_layers=gcn_layer_num, k=self.neg_num)
-        #
-        #     self.test_loader = self._get_loader(mode='test', g=test_g, eid_dict=eids_dict['test'],
-        #                                         batch_size=test_batch_size, num_workers=0, is_shuffle=False,
-        #                                         num_layers=gcn_layer_num, k=self.neg_num)
-
-
-
     def _get_model_specific_etype_graph(self, g):
         if self.task == 'Link':
             g = dgl.edge_type_subgraph(g, ['trust', 'trusted-by'])
@@ -339,7 +307,6 @@ class BaseTrainer:
             # 所以这里需要排除的边就是需要验证的边
             sampler = dgl.dataloading.as_edge_prediction_sampler(
                 sampler, negative_sampler=NegativeSampler(self.history_lst, self.total_num, k),
-                exclude=lambda x: eid_dict
             )
             dataloader = dgl.dataloading.DataLoader(
                 g, eid_dict, sampler,
@@ -476,7 +443,6 @@ class BaseTrainer:
             f.write(str_)
             f.write('\n')
         return str_
-
 
     def _save_model(self, save_pth):
         # 保存最好模型

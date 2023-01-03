@@ -49,7 +49,7 @@ def parse_args():
     # Parses the arguments.
     # MODEL
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('-m', '--model_name', type=str, default='NJBP',
+    parser.add_argument('-m', '--model_name', type=str, default='MF',
                         help='Choose config')
     parser.add_argument('-s', '--embedding_size', type=str, default=None,
                         help='set embedding size')
