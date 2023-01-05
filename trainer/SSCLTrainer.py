@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 """
-@File    :   NCLTrainer.py
+@File    :   SSCLTrainer.py
 @Contact :   xansar@ruc.edu.cn
 
 @Modify Time      @Author    @Version    @Desciption
@@ -19,9 +19,9 @@ import os
 
 from .BaseTrainer import BaseTrainer
 
-class NCLTrainer(BaseTrainer):
+class SSCLTrainer(BaseTrainer):
     def __init__(self, config, trial=None):
-        super(NCLTrainer, self).__init__(config, trial=trial)
+        super(SSCLTrainer, self).__init__(config, trial=trial)
 
     def step(self, mode='train', **inputs):
         # 模型单步计算
@@ -59,13 +59,13 @@ class NCLTrainer(BaseTrainer):
                 neg_pred_g,
                 input_nodes=input_nodes
             )
-            pos_pred, neg_pred, ssl_loss, proto_nce_loss = output
+            pos_pred, neg_pred, ssl_loss = output
             neg_pred = neg_pred.reshape(-1, self.train_neg_num)
             loss = self.loss_func(pos_pred, neg_pred)
-            total_loss = loss + ssl_loss + proto_nce_loss
+            total_loss = loss + ssl_loss
             total_loss.backward()
             self.optimizer.step()
-            return total_loss.item(), loss.item(), ssl_loss.item(), proto_nce_loss.item()
+            return total_loss.item(), loss.item(), ssl_loss.item()
 
         elif mode == 'evaluate' or mode == 'test':
             with torch.no_grad():
@@ -88,7 +88,7 @@ class NCLTrainer(BaseTrainer):
                         mode=mode
                     )
                 self.metric.compute_metrics(batch_users.cpu(), rating_k, gt, task=self.task)
-                return torch.nan, torch.nan, torch.nan, torch.nan
+                return torch.nan, torch.nan, torch.nan
                 #
                 # if isinstance(inputs['graphs'], int):
                 #     # 全图
@@ -137,9 +137,9 @@ class NCLTrainer(BaseTrainer):
             # 计算所有user item的最终表示
             self.model.compute_final_embeddings(self.message_g)
 
-        if mode == 'train':
-            # 聚类，每个epoch做一次
-            self.model.e_step()
+        # if mode == 'train':
+        #     # 聚类，每个epoch做一次
+        #     self.model.e_step()
 
         for i, graphs in bar_loader:
             loss_lst = self.step(
@@ -170,5 +170,5 @@ class NCLTrainer(BaseTrainer):
         return all_loss_lst
 
     def train(self):
-        loss_name = ['Total Loss', 'Loss', 'Structure Loss', 'Semantic Loss']
+        loss_name = ['Total Loss', 'Loss', 'Structure Loss']
         return self._train(loss_name)

@@ -17,7 +17,7 @@ import dgl.nn.pytorch as dglnn
 import dgl.function as fn
 
 from .kmeans import kmeans
-from .utils import init_weights
+from .utils import init_weights, BaseModel
 
 class HeteroDotProductPredictor(nn.Module):
     def forward(self, graph, h, etype):
@@ -29,7 +29,7 @@ class HeteroDotProductPredictor(nn.Module):
             return graph.edges[etype].data['score']
 
 
-class NCLModel(nn.Module):
+class NCLModel(BaseModel):
     def __init__(self, config, rel_names):
         super(NCLModel, self).__init__()
         self.config = config
@@ -138,14 +138,36 @@ class NCLModel(nn.Module):
         proto_nce_loss = self.proto_reg * (proto_nce_user_loss + proto_nce_item_loss)
         return proto_nce_loss
 
-    def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
+    def compute_final_embeddings(self, message_g, idx=None):
+        mode = 'train'
+        if idx is None:
+            mode = 'evaluate'
+            idx = {ntype: message_g.nodes(ntype=ntype) for ntype in message_g.ntypes}
+        res_embedding = self.embedding(idx)
+        for i, layer in enumerate(self.layers):
+            if i == 0:
+                embeddings = layer(message_g, res_embedding)
+            else:
+                embeddings = layer(message_g, embeddings)
+            res_embedding['user'] = res_embedding['user'] + embeddings['user']
+            if self.task != 'Link':
+                res_embedding['item'] = res_embedding['item'] + embeddings['item']
+        res_embedding['user'] /= len(self.layers) + 1
+        if self.task != 'Link':
+            res_embedding['item'] /= len(self.layers) + 1
+        if mode == 'evaluate':
+            self.res_embedding = res_embedding
+        else:
+            return res_embedding
+
+    def forward(self, message_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:
-            if '_ID' in messege_g.ndata.keys():
+            if '_ID' in message_g.ndata.keys():
                 # 子图采样的情况
-                idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+                idx = {ntype: message_g.nodes[ntype].data['_ID'] for ntype in message_g.ntypes}
             else:
                 # 全图的情况
-                idx = {ntype: messege_g.nodes(ntype=ntype) for ntype in messege_g.ntypes}
+                idx = {ntype: message_g.nodes(ntype=ntype) for ntype in message_g.ntypes}
             res_embeddings = self.embedding(idx)
             used_embeddings = {
                 'user': [res_embeddings['user'], ], # 0是初始embedding，1是第k（2）层的embedding
@@ -153,9 +175,9 @@ class NCLModel(nn.Module):
             }
             for i, layer in enumerate(self.layers):
                 if i == 0:
-                    embeddings = layer(messege_g, res_embeddings)
+                    embeddings = layer(message_g, res_embeddings)
                 else:
-                    embeddings = layer(messege_g, embeddings)
+                    embeddings = layer(message_g, embeddings)
 
                 res_embeddings['user'] = res_embeddings['user'] + embeddings['user']
                 res_embeddings['item'] = res_embeddings['item'] + embeddings['item']
@@ -184,12 +206,12 @@ class NCLModel(nn.Module):
                 'user': original_embedding['user'][dst_user],
                 'item': original_embedding['item'][dst_item]
             }
-            # used_embeddings = {
-            #     'user': [res_embeddings['user'], ], # 0是初始embedding，1是第k（2）层的embedding
-            #     'item': [res_embeddings['item'], ]
-            # }
-            for i in range(1, len(messege_g) + 1):
-                blocks = messege_g[-i:]
+            used_embeddings = {
+                'user': [res_embeddings['user'], ], # 0是初始embedding，1是第k（2）层的embedding
+                'item': [res_embeddings['item'], ]
+            }
+            for i in range(1, len(message_g) + 1):
+                blocks = message_g[-i:]
                 for j in range(i):
                     layer = self.layers[j]
                     embed = {
@@ -201,25 +223,24 @@ class NCLModel(nn.Module):
                         embeddings = layer(blocks[j], embed)
                     else:
                         embeddings = layer(blocks[j], embeddings)
-                # # ssl loss
-                # if i == len(messege_g):
-                #     used_embeddings['user'].append(embeddings['user'])
-                #     used_embeddings['item'].append(embeddings['item'])
+                # ssl loss
+                if i == len(message_g):
+                    used_embeddings['user'].append(embeddings['user'])
+                    used_embeddings['item'].append(embeddings['item'])
 
                 res_embeddings['user'] = res_embeddings['user'] + embeddings['user']
                 res_embeddings['item'] = res_embeddings['item'] + embeddings['item']
 
-            # total_embeddings = self.embedding.weight
-            # ssl_loss = self.compute_structral_neighbour_ssl_loss(used_embeddings, total_embeddings)
-            #
-            # proto_nce_loss = self.compute_protoNCE_loss(
-            #     user_embeddings=self.embedding.weight['user'][dst_user],
-            #     item_embeddings=self.embedding.weight['item'][dst_item],
-            #     user=dst_user,
-            #     item=dst_item
-            # )
-            ssl_loss, proto_nce_loss = \
-                torch.tensor(torch.nan, device=pos_pred_g.device), torch.tensor(torch.nan, device=pos_pred_g.device)
+            total_embeddings = self.embedding.weight
+            ssl_loss = self.compute_structral_neighbour_ssl_loss(used_embeddings, total_embeddings)
+            proto_nce_loss = self.compute_protoNCE_loss(
+                user_embeddings=self.embedding.weight['user'][dst_user],
+                item_embeddings=self.embedding.weight['item'][dst_item],
+                user=dst_user,
+                item=dst_item
+            )
+            # ssl_loss, proto_nce_loss = \
+            #     torch.tensor(torch.nan, device=pos_pred_g.device), torch.tensor(torch.nan, device=pos_pred_g.device)
             res_embeddings['user'] /= len(self.layers) + 1
             res_embeddings['item'] /= len(self.layers) + 1
         pos_score = self.pred(pos_pred_g, res_embeddings, 'rate')

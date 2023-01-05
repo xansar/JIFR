@@ -15,7 +15,7 @@ import torch.nn as nn
 import dgl.nn.pytorch as dglnn
 import dgl.function as fn
 
-from .utils import init_weights
+from .utils import init_weights, BaseModel
 
 
 class HeteroDotProductPredictor(nn.Module):
@@ -28,7 +28,7 @@ class HeteroDotProductPredictor(nn.Module):
             return graph.edges[etype].data['score']
 
 
-class MFModel(nn.Module):
+class MFModel(BaseModel):
     def __init__(self, config, etype=None):
         super(MFModel, self).__init__()
         self.config = config
@@ -42,15 +42,18 @@ class MFModel(nn.Module):
         self.pred = HeteroDotProductPredictor()
         init_weights(self.modules())
 
-    def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
+    def compute_final_embeddings(self, message_g):
+        self.res_embedding = self.embedding.weight
+
+    def forward(self, message_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:
             # 训练时，在图上训练，不需要区分block
-            if '_ID' in messege_g.ndata.keys():
+            if '_ID' in message_g.ndata.keys():
                 # 子图采样的情况
-                idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+                idx = {ntype: message_g.nodes[ntype].data['_ID'] for ntype in message_g.ntypes}
             else:
                 # 全图的情况
-                idx = {ntype: messege_g.nodes(ntype=ntype) for ntype in messege_g.ntypes}
+                idx = {ntype: message_g.nodes(ntype=ntype) for ntype in message_g.ntypes}
             if self.task == 'Link':
                 etype = 'trust'
                 res_embedding = self.embedding(idx)['user']
@@ -62,13 +65,13 @@ class MFModel(nn.Module):
             if self.task == 'Link':
                 res_embedding = self.embedding({'user': input_nodes})   # block的情况
                 etype = 'trust'
-                dst_user = messege_g[0].dstnodes(ntype='user')
+                dst_user = message_g[0].dstnodes(ntype='user')
                 res_embedding = res_embedding['user'][dst_user]
             elif self.task == 'Rate':
                 res_embedding = self.embedding(input_nodes)
                 etype = 'rate'
-                dst_user = messege_g[0].dstnodes(ntype='user')
-                dst_item = messege_g[0].dstnodes(ntype='item')
+                dst_user = message_g[0].dstnodes(ntype='user')
+                dst_item = message_g[0].dstnodes(ntype='item')
                 res_embedding = {
                     'user': res_embedding['user'][dst_user],
                     'item': res_embedding['item'][dst_item]

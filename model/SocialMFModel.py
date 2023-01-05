@@ -54,9 +54,9 @@ class SocialMFModel(nn.Module):
 
         self.reg_loss = RegLoss(lamda=self.lamda, lamda_t=self.lamda_t)
 
-    def forward(self, messege_g, pos_pred_g, neg_pred_g):
+    def forward(self, message_g, pos_pred_g, neg_pred_g):
         # etype: rate, rated-by, trusted-by
-        idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
+        idx = {ntype: message_g.nodes(ntype) for ntype in message_g.ntypes}
         p_q = self.p_q_embedding(idx)  # {'user': p, 'item': q}
         bias = self.bias(idx)
         res_embedding = {'user':p_q['user'], 'item': p_q['item']}
@@ -66,19 +66,19 @@ class SocialMFModel(nn.Module):
 
         # 正则化
         ## social link reg
-        with messege_g.local_scope():
+        with message_g.local_scope():
             r=nn.Sigmoid()
-            messege_g.nodes['user'].data['p'] = p_q['user']
-            messege_g.update_all(fn.copy_u('p','m'),fn.mean('m', 'ft'),etype='trusted-by')
+            message_g.nodes['user'].data['p'] = p_q['user']
+            message_g.update_all(fn.copy_u('p','m'),fn.mean('m', 'ft'),etype='trusted-by')
             
            
-            link_label=messege_g.nodes['user'].data['p']
-            link_pred = messege_g.nodes['user'].data['ft']
+            link_label=message_g.nodes['user'].data['p']
+            link_pred = message_g.nodes['user'].data['ft']
 
         params = {
             'p_q': p_q
         }
-        reg_loss, link_loss = self.reg_loss(messege_g, params, link_pred,link_label)
+        reg_loss, link_loss = self.reg_loss(message_g, params, link_pred,link_label)
         return pos_score, neg_score, reg_loss, link_loss
 
 class RegLoss(nn.Module):

@@ -132,18 +132,18 @@ class NJBPModel(nn.Module):
 
         init_weights(self.modules())
 
-    def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
+    def forward(self, message_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:
-            if '_ID' in messege_g.ndata.keys():
+            if '_ID' in message_g.ndata.keys():
                 # 子图采样的情况
-                input_nodes = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+                input_nodes = {ntype: message_g.nodes[ntype].data['_ID'] for ntype in message_g.ntypes}
             else:
                 # 全图的情况
-                input_nodes = {ntype: messege_g.nodes(ntype=ntype) for ntype in messege_g.ntypes}
+                input_nodes = {ntype: message_g.nodes(ntype=ntype) for ntype in message_g.ntypes}
         else:
-            messege_g = messege_g[0]
+            message_g = message_g[0]
             # 这里没有卷积操作，直接使用dstnodes
-            dst_nodes = {ntype: messege_g.dstnodes(ntype) for ntype in messege_g.dsttypes}
+            dst_nodes = {ntype: message_g.dstnodes(ntype) for ntype in message_g.dsttypes}
             input_nodes = {ntype: idx[dst_nodes[ntype]] for ntype, idx in input_nodes.items()}
         p_q = self.deep_consumption_embed(input_nodes)
         w_m = self.shallow_consumption_embed(input_nodes)

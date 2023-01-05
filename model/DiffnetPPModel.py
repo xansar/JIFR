@@ -154,21 +154,21 @@ class DiffnetPPModel(nn.Module):
         self.pred = HeteroDotProductPredictor()
         init_weights(self.modules())
 
-    def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
+    def forward(self, message_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:
-            if '_ID' in messege_g.ndata.keys():
+            if '_ID' in message_g.ndata.keys():
                 # 子图采样的情况
-                idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+                idx = {ntype: message_g.nodes[ntype].data['_ID'] for ntype in message_g.ntypes}
             else:
                 # 全图的情况
-                idx = {ntype: messege_g.nodes(ntype=ntype) for ntype in messege_g.ntypes}
+                idx = {ntype: message_g.nodes(ntype=ntype) for ntype in message_g.ntypes}
             # res_embedding = self.fusion_layer(self.embedding(idx))
             res_embedding = self.embedding(idx)
             for i, layer in enumerate(self.diffusion_layers):
                 if i == 0:
-                    embeddings = layer(messege_g, res_embedding)
+                    embeddings = layer(message_g, res_embedding)
                 else:
-                    embeddings = layer(messege_g, embeddings)
+                    embeddings = layer(message_g, embeddings)
                 res_embedding['user'] = torch.cat([res_embedding['user'], embeddings['user']], dim=1)
                 res_embedding['item'] = torch.cat([res_embedding['item'], embeddings['item']], dim=1)
         else:
@@ -179,8 +179,8 @@ class DiffnetPPModel(nn.Module):
                 'user': original_embedding['user'][dst_user],
                 'item': original_embedding['item'][dst_item]
             }
-            for i in range(1, len(messege_g) + 1):
-                blocks = messege_g[-i:]
+            for i in range(1, len(message_g) + 1):
+                blocks = message_g[-i:]
                 for j in range(i):
                     layer = self.diffusion_layers[j]
                     if j == 0:

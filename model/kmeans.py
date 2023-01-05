@@ -16,15 +16,39 @@ import torch
 from tqdm import tqdm
 
 
-def initialize(X, num_clusters):
+def initialize(X, num_clusters, distance, device):
     """
     initialize cluster centers
     :param X: (torch.tensor) matrix
     :param num_clusters: (int) number of clusters
     :return: (np.array) initial state
     """
+    if distance == 'euclidean':
+        pairwise_distance_function = pairwise_distance
+    elif distance == 'cosine':
+        pairwise_distance_function = pairwise_cosine
+    else:
+        raise NotImplementedError
+
     num_samples = len(X)
-    indices = np.random.choice(num_samples, num_clusters, replace=False)
+
+    first = np.random.choice(num_samples)
+    # 储存在一个列表中
+    indices = [first]
+    # 继续选取k-1个点
+    for i in range(1, num_clusters):
+        selected_centers = X[indices]
+        dis = pairwise_distance_function(X, selected_centers, device=device).reshape(num_samples, -1)
+        min_dis, _ = torch.min(dis, dim=1)
+        p = (min_dis / min_dis.sum()).cpu().numpy()
+        assert p.shape[0] == num_samples
+        idx = np.random.choice(num_samples, p=p)
+        assert idx not in indices
+        indices.append(idx)
+
+
+    # indices = np.random.choice(num_samples, num_clusters, replace=False)
+    # 随机抽取样本作为初始簇中心
     initial_state = X[indices]
     return initial_state
 
@@ -34,7 +58,7 @@ def kmeans(
         num_clusters,
         distance='euclidean',
         tol=1e-4,
-        niter=20,
+        niter=100,
         device=torch.device('cpu'),
         node_type='user',
 ):
@@ -56,18 +80,28 @@ def kmeans(
     else:
         raise NotImplementedError
 
+    batch_size = 4096
+
     # convert to float
     X = X.float()
 
     # transfer to device
-    X = X.to(device)
+    original_X = X.to(device)
 
-    # initialize
-    initial_state = initialize(X, num_clusters)
+    # # initialize
+    # initial_state = initialize(original_X, num_clusters)
 
     iteration = 0
     tqdm_meter = tqdm(desc='[running kmeans]', total=niter)
     while True:
+        # 这里使用mini batch，就是随机从X中进行抽样，然后基于抽取的样本迭代簇中心
+        num_samples = len(original_X)
+        sampled_idx = np.random.choice(num_samples, batch_size, replace=False)
+        X = original_X[sampled_idx]
+        if iteration == 0:
+            # initialize
+            initial_state = initialize(X, num_clusters, distance, device)
+
         dis = pairwise_distance_function(X, initial_state, device=device)
 
         choice_cluster = torch.argmin(dis, dim=1)
@@ -76,7 +110,8 @@ def kmeans(
 
         for index in range(num_clusters):
             selected = torch.nonzero(choice_cluster == index).squeeze().to(device)
-
+            if len(selected.shape) != 0 and selected.shape[0] == 0:
+                continue
             selected = torch.index_select(X, 0, selected)
             initial_state[index] = selected.mean(dim=0)
 
@@ -98,7 +133,8 @@ def kmeans(
         if center_shift ** 2 < tol or iteration >= niter:
             break
 
-    return choice_cluster.cpu(), initial_state.cpu()
+    choice_cluster = kmeans_predict(original_X, initial_state, device=device)
+    return choice_cluster, initial_state.cpu()
 
 
 def kmeans_predict(

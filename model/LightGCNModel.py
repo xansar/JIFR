@@ -15,7 +15,7 @@ import torch.nn as nn
 import dgl.nn.pytorch as dglnn
 import dgl.function as fn
 
-from .utils import init_weights
+from .utils import init_weights, BaseModel
 
 
 class HeteroDotProductPredictor(nn.Module):
@@ -28,7 +28,7 @@ class HeteroDotProductPredictor(nn.Module):
             return graph.edges[etype].data['score']
 
 
-class LightGCNModel(nn.Module):
+class LightGCNModel(BaseModel):
     def __init__(self, config, rel_names):
         super(LightGCNModel, self).__init__()
         self.config = config
@@ -51,44 +51,80 @@ class LightGCNModel(nn.Module):
         self.pred = HeteroDotProductPredictor()
         init_weights(self.modules())
 
-    def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
+    def compute_final_embeddings(self, message_g, idx=None):
+        mode = 'train'
+        if idx is None:
+            mode = 'evaluate'
+            idx = {ntype: message_g.nodes(ntype=ntype) for ntype in message_g.ntypes}
+        res_embedding = self.embedding(idx)
+        for i, layer in enumerate(self.layers):
+            if i == 0:
+                embeddings = layer(message_g, res_embedding)
+            else:
+                embeddings = layer(message_g, embeddings)
+            res_embedding['user'] = res_embedding['user'] + embeddings['user']
+            if self.task != 'Link':
+                res_embedding['item'] = res_embedding['item'] + embeddings['item']
+        res_embedding['user'] /= len(self.layers) + 1
+        if self.task != 'Link':
+            res_embedding['item'] /= len(self.layers) + 1
+        if mode == 'evaluate':
+            self.res_embedding = res_embedding
+        else:
+            return res_embedding
+
+    def forward(self, message_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:
-            if '_ID' in messege_g.ndata.keys():
+            if '_ID' in message_g.ndata.keys():
                 # 子图采样的情况
-                idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+                idx = {ntype: message_g.nodes[ntype].data['_ID'] for ntype in message_g.ntypes}
             else:
                 # 全图的情况
-                idx = {ntype: messege_g.nodes(ntype=ntype) for ntype in messege_g.ntypes}
-            res_embedding = self.embedding(idx)
-            for i, layer in enumerate(self.layers):
-                if i == 0:
-                    embeddings = layer(messege_g, res_embedding)
-                else:
-                    embeddings = layer(messege_g, embeddings)
-                res_embedding['user'] = res_embedding['user'] + embeddings['user']
-                res_embedding['item'] = res_embedding['item'] + embeddings['item']
-            res_embedding['user'] /= len(self.layers) + 1
-            res_embedding['item'] /= len(self.layers) + 1
+                idx = {ntype: message_g.nodes(ntype=ntype) for ntype in message_g.ntypes}
+            res_embedding = self.compute_final_embeddings(message_g, idx)
         else:
+            if self.task == 'Link':
+                input_nodes = {'user': input_nodes}
             original_embedding = self.embedding(input_nodes)
+
             dst_user = pos_pred_g.dstnodes(ntype='user')
-            dst_item = pos_pred_g.dstnodes(ntype='item')
             res_embedding = {
                 'user': original_embedding['user'][dst_user],
-                'item': original_embedding['item'][dst_item]
             }
-            for i in range(1, len(messege_g) + 1):
-                blocks = messege_g[-i:]
+            if self.task != 'Link':
+                dst_item = pos_pred_g.dstnodes(ntype='item')
+                res_embedding.update({
+                    'item': original_embedding['item'][dst_item]
+                })
+
+            for i in range(1, len(message_g) + 1):
+                blocks = message_g[-i:]
                 for j in range(i):
                     layer = self.layers[j]
+                    embed = {
+                        'user': original_embedding['user'][blocks[j].srcnodes('user')],
+                    }
+                    if self.task != 'Link':
+                        embed.update({
+                            'item': original_embedding['item'][blocks[j].srcnodes('item')],
+                        })
                     if j == 0:
-                        embeddings = layer(blocks[j], original_embedding)
+                        # embeddings = layer(blocks[j], original_embedding)
+                        embeddings = layer(blocks[j], embed)
                     else:
                         embeddings = layer(blocks[j], embeddings)
                 res_embedding['user'] = res_embedding['user'] + embeddings['user']
-                res_embedding['item'] = res_embedding['item'] + embeddings['item']
+                if self.task != 'Link':
+                    res_embedding['item'] = res_embedding['item'] + embeddings['item']
             res_embedding['user'] /= len(self.layers) + 1
-            res_embedding['item'] /= len(self.layers) + 1
-        pos_score = self.pred(pos_pred_g, res_embedding, 'rate')
-        neg_score = self.pred(neg_pred_g, res_embedding, 'rate')
+            if self.task != 'Link':
+                res_embedding['item'] /= len(self.layers) + 1
+        if self.task == 'Link':
+            etype = 'trust'
+            pos_score = self.pred(pos_pred_g, res_embedding['user'], etype)
+            neg_score = self.pred(neg_pred_g, res_embedding['user'], etype)
+        else:
+            etype = 'rate'
+            pos_score = self.pred(pos_pred_g, res_embedding, etype)
+            neg_score = self.pred(neg_pred_g, res_embedding, etype)
         return pos_score, neg_score

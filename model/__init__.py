@@ -16,6 +16,7 @@ from .utils import *
 from .MFModel import *
 from .LightGCNModel import *
 from .NCLModel import *
+from .SSCLModel import *
 
 # classical social
 from .TrustSVDModel import *

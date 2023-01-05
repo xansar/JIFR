@@ -66,14 +66,14 @@ class SVDPPModel(nn.Module):
 
         self.reg_loss = RegLoss(lamda=self.lamda, lamda_t=self.lamda_t)
 
-    def forward(self, messege_g, pos_pred_g, neg_pred_g):
+    def forward(self, message_g, pos_pred_g, neg_pred_g):
         # etype: rate, rated-by, trusted-by
-        idx = {ntype: messege_g.nodes(ntype) for ntype in messege_g.ntypes}
+        idx = {ntype: message_g.nodes(ntype) for ntype in message_g.ntypes}
         y_w = self.y_w_embedding(idx)  # {'user': w, 'item': y}
         p_q = self.p_q_embedding(idx)  # {'user': p, 'item': q}
-        normed_y = self.y_gcn(messege_g,
+        normed_y = self.y_gcn(message_g,
                               ({'item': y_w['item']}, {'user': p_q['user']}))  # 'user': user_num * embedsize
-        normed_w = self.w_gcn(messege_g,
+        normed_w = self.w_gcn(message_g,
                               ({'user': y_w['user']}, {'user': p_q['user']}))  # 'user': user_num * embedsize
         bias = self.bias(idx)
         res_embedding = {'user': normed_y['user'] + p_q['user'], 'item': p_q['item']}
@@ -83,19 +83,19 @@ class SVDPPModel(nn.Module):
 
         # 正则化
         ## social link reg
-        with messege_g.local_scope():
-            messege_g.nodes['user'].data['p'] = p_q['user']
-            messege_g.nodes['user'].data['w'] = y_w['user']
+        with message_g.local_scope():
+            message_g.nodes['user'].data['p'] = p_q['user']
+            message_g.nodes['user'].data['w'] = y_w['user']
             # 这里是v trusted-by u，所以前面的节点特征用w，后面的用p
-            messege_g.apply_edges(fn.u_dot_v('w', 'p', 'score'), etype='trusted-by')
-            link_pred = messege_g.edges['trusted-by'].data['score']
+            message_g.apply_edges(fn.u_dot_v('w', 'p', 'score'), etype='trusted-by')
+            link_pred = message_g.edges['trusted-by'].data['score']
 
         params = {
             'bias': bias,
             'y_w': y_w,
             'p_q': p_q
         }
-        reg_loss= self.reg_loss(messege_g, params, link_pred)
+        reg_loss= self.reg_loss(message_g, params, link_pred)
         return pos_score, neg_score, reg_loss
 
 class RegLoss(nn.Module):

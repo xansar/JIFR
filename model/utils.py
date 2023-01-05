@@ -36,3 +36,18 @@ class BPRLoss(nn.Module):
         loss = reduce_func((-torch.log(torch.sigmoid(pos_score - neg_score).clamp(min=1e-8))).clamp(max=20))
         return loss
 
+class BaseModel(nn.Module):
+    def __init__(self):
+        super(BaseModel, self).__init__()
+
+    def get_final_embeddings(self, output_nodes, etype):
+        u_embed = self.res_embedding['user'][output_nodes]
+        if etype == 'rate':
+            v_embed = self.res_embedding['item']
+        else:
+            v_embed = self.res_embedding['user']
+        return u_embed, v_embed
+
+    def compute_final_embeddings(self, message_g, idx=None):
+        pass
+

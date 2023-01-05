@@ -173,8 +173,8 @@ def relabel(data_name):
 
 
 if __name__ == '__main__':
-    data_name = 'Yelp'
+    data_name = 'Epinions'
     transfer_data(data_name)
     # rate_min: Epinions 3, Ciao 3, Yelp -1, Flickr -1
-    filter_data(data_name, threshold=2, rate_min=-1)
+    filter_data(data_name, threshold=2, rate_min=3)
     relabel(data_name)

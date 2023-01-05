@@ -16,7 +16,7 @@ import torch.nn.functional as F
 import dgl.nn.pytorch as dglnn
 import dgl.function as fn
 
-from .utils import init_weights
+from .utils import init_weights, BaseModel
 
 class HeteroDotProductPredictor(nn.Module):
     def forward(self, graph, h, etype):
@@ -28,7 +28,7 @@ class HeteroDotProductPredictor(nn.Module):
             return graph.edges[etype].data['score']
 
 
-class SocialLGNModel(nn.Module):
+class SocialLGNModel(BaseModel):
     def __init__(self, config, rel_names):
         super(SocialLGNModel, self).__init__()
         self.config = config
@@ -62,45 +62,57 @@ class SocialLGNModel(nn.Module):
         self.pred = HeteroDotProductPredictor()
         init_weights(self.modules())
 
-    def forward(self, messege_g, pos_pred_g, neg_pred_g, input_nodes=None):
+    def compute_final_embeddings(self, message_g, idx=None):
+        mode = 'train'
+        if idx is None:
+            mode = 'evaluate'
+            idx = {ntype: message_g.nodes(ntype=ntype) for ntype in message_g.ntypes}
+        res_embedding = self.embedding(idx)
+
+        for i, layer in enumerate(self.layers):
+            if i == 0:
+                cur_embed = res_embedding
+            else:
+                cur_embed = embeddings
+            # item->user
+            src = {'item': cur_embed['item']}
+            dst = {'user': cur_embed['user']}
+            embeddings = layer(message_g, (src, dst))
+            # user->item
+            src = {'user': cur_embed['user']}
+            dst = {'item': cur_embed['item']}
+            embeddings.update(layer(message_g, (src, dst)))
+
+            # user->user
+            src = {'user': cur_embed['user']}
+            dst = {'user': cur_embed['user']}
+            social_embedding = layer(message_g, (src, dst))['user']
+            ## fusion layer
+            embeddings['user'] = self.fusion_layer_social_part(social_embedding) \
+                                 + self.fusion_layer_pref_part(embeddings['user'])
+            ## regularization
+            embeddings['user'] = F.normalize(embeddings['user'])
+
+            res_embedding['user'] = res_embedding['user'] + embeddings['user']
+            res_embedding['item'] = res_embedding['item'] + embeddings['item']
+
+        res_embedding['user'] /= len(self.layers) + 1
+        res_embedding['item'] /= len(self.layers) + 1
+        if mode == 'evaluate':
+            self.res_embedding = res_embedding
+        else:
+            return res_embedding
+
+
+    def forward(self, message_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:
-            if '_ID' in messege_g.ndata.keys():
+            if '_ID' in message_g.ndata.keys():
                 # 子图采样的情况
-                idx = {ntype: messege_g.nodes[ntype].data['_ID'] for ntype in messege_g.ntypes}
+                idx = {ntype: message_g.nodes[ntype].data['_ID'] for ntype in message_g.ntypes}
             else:
                 # 全图的情况
-                idx = {ntype: messege_g.nodes(ntype=ntype) for ntype in messege_g.ntypes}
-            res_embedding = self.embedding(idx)
-
-            for i, layer in enumerate(self.layers):
-                if i == 0:
-                    cur_embed = res_embedding
-                else:
-                    cur_embed = embeddings
-                # item->user
-                src = {'item': cur_embed['item']}
-                dst = {'user': cur_embed['user']}
-                embeddings = layer(messege_g, (src, dst))
-                # user->item
-                src = {'user': cur_embed['user']}
-                dst = {'item': cur_embed['item']}
-                embeddings.update(layer(messege_g, (src, dst)))
-
-                # user->user
-                src = {'user': cur_embed['user']}
-                dst = {'user': cur_embed['user']}
-                social_embedding = layer(messege_g, (src, dst))['user']
-                ## fusion layer
-                embeddings['user'] = self.fusion_layer_social_part(social_embedding)\
-                                     + self.fusion_layer_pref_part(embeddings['user'])
-                ## regularization
-                embeddings['user'] = F.normalize(embeddings['user'])
-
-                res_embedding['user'] = res_embedding['user'] + embeddings['user']
-                res_embedding['item'] = res_embedding['item'] + embeddings['item']
-
-            res_embedding['user'] /= len(self.layers) + 1
-            res_embedding['item'] /= len(self.layers) + 1
+                idx = {ntype: message_g.nodes(ntype=ntype) for ntype in message_g.ntypes}
+            res_embedding = self.compute_final_embeddings(message_g, idx)
         else:
             original_embedding = self.embedding(input_nodes)
             dst_user = pos_pred_g.dstnodes(ntype='user')
@@ -109,12 +121,16 @@ class SocialLGNModel(nn.Module):
                 'user': original_embedding['user'][dst_user],
                 'item': original_embedding['item'][dst_item]
             }
-            for i in range(1, len(messege_g) + 1):
-                blocks = messege_g[-i:]
+            for i in range(1, len(message_g) + 1):
+                blocks = message_g[-i:]
                 for j in range(i):
                     layer = self.layers[j]
+                    embed = {
+                        'user': original_embedding['user'][blocks[j].srcnodes('user')],
+                        'item': original_embedding['item'][blocks[j].srcnodes('item')],
+                    }
                     if j == 0:
-                        cur_embed = original_embedding
+                        cur_embed = embed
                     else:
                         cur_embed = embeddings
                     # item->user
@@ -142,35 +158,3 @@ class SocialLGNModel(nn.Module):
         pos_score = self.pred(pos_pred_g, res_embedding, 'rate')
         neg_score = self.pred(neg_pred_g, res_embedding, 'rate')
         return pos_score, neg_score
-        # pref_embedding = self.embedding(idx)
-        # social_embedding = {
-        #     'user': torch.clone(pref_embedding['user'])
-        # }
-        # for i, layer in enumerate(self.preference_layers):
-        #     if i == 0:
-        #         embeddings = layer(messege_g, pref_embedding)
-        #     else:
-        #         embeddings = layer(messege_g, embeddings)
-        #     # print(embeddings)
-        #     # print(pref_embedding['user'].shape, embeddings['user'].shape)
-        #     # print(pref_embedding['item'].shape, embeddings['item'].shape)
-        #     pref_embedding['user'] = pref_embedding['user'] + embeddings['user'] * (1 / (i + 2))
-        #     pref_embedding['item'] = pref_embedding['item'] + embeddings['item'] * (1 / (i + 2))
-        #
-        # for i, layer in enumerate(self.social_layers):
-        #     if i == 0:
-        #         embeddings = layer(social_network, social_embedding)
-        #     else:
-        #         embeddings = layer(social_network, embeddings)
-        #     # print(embeddings)
-        #     # print(pref_embedding['user'].shape, embeddings['user'].shape)
-        #     # print(pref_embedding['item'].shape, embeddings['item'].shape)
-        #     social_embedding['user'] = social_embedding['user'] + embeddings['user'] * (1 / (i + 2))
-        #
-        # res_embedding = {
-        #     'user': pref_embedding['user'] + social_embedding['user'],
-        #     'item': pref_embedding['item']
-        # }
-        # pos_score = self.pred(pos_pred_g, res_embedding, 'rate')
-        # neg_score = self.pred(neg_pred_g, res_embedding, 'rate')
-        # return pos_score, neg_score
