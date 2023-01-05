@@ -15,7 +15,7 @@ import torch.nn as nn
 import dgl.nn.pytorch as dglnn
 import dgl.function as fn
 
-from .utils import init_weights
+from .utils import init_weights, BaseModel
 
 
 class HeteroDotProductPredictor(nn.Module):
@@ -124,7 +124,7 @@ class ActivatedHeteroLinear(nn.Module):
         return x
 
 
-class DiffnetPPModel(nn.Module):
+class DiffnetPPModel(BaseModel):
     def __init__(self, config, rel_names, is_feature=False):
         super(DiffnetPPModel, self).__init__()
         self.config = config
@@ -153,6 +153,24 @@ class DiffnetPPModel(nn.Module):
 
         self.pred = HeteroDotProductPredictor()
         init_weights(self.modules())
+
+    def compute_final_embeddings(self, message_g, idx=None):
+        mode = 'train'
+        if idx is None:
+            mode = 'evaluate'
+            idx = {ntype: message_g.nodes(ntype=ntype) for ntype in message_g.ntypes}
+        res_embedding = self.embedding(idx)
+        for i, layer in enumerate(self.diffusion_layers):
+            if i == 0:
+                embeddings = layer(message_g, res_embedding)
+            else:
+                embeddings = layer(message_g, embeddings)
+            res_embedding['user'] = torch.cat([res_embedding['user'], embeddings['user']], dim=1)
+            res_embedding['item'] = torch.cat([res_embedding['item'], embeddings['item']], dim=1)
+        if mode == 'evaluate':
+            self.res_embedding = res_embedding
+        else:
+            return res_embedding
 
     def forward(self, message_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:

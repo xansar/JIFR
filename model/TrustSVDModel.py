@@ -15,7 +15,7 @@ import torch.nn as nn
 import dgl.nn.pytorch as dglnn
 import dgl.function as fn
 
-from .utils import init_weights
+from .utils import init_weights, BaseModel
 
 
 class HeteroDotProductPredictor(nn.Module):
@@ -32,7 +32,7 @@ class HeteroDotProductPredictor(nn.Module):
             return graph.edges[etype].data['score']
 
 
-class TrustSVDModel(nn.Module):
+class TrustSVDModel(BaseModel):
     def __init__(self, config, rel_names):
         super(TrustSVDModel, self).__init__()
         self.config = config
@@ -66,6 +66,53 @@ class TrustSVDModel(nn.Module):
         init_weights(self.modules())
 
         self.reg_loss = RegLoss(lamda=self.lamda, lamda_t=self.lamda_t)
+
+    def compute_final_embeddings(self, message_g, idx=None):
+        mode = 'train'
+        if idx is None:
+            mode = 'evaluate'
+            idx = {ntype: message_g.nodes(ntype=ntype) for ntype in message_g.ntypes}
+        y_w = self.y_w_embedding(idx)  # {'user': w, 'item': y}
+        p_q = self.p_q_embedding(idx)  # {'user': p, 'item': q}
+
+        src_user = message_g.srcnodes(ntype='user')
+        src_item = message_g.srcnodes(ntype='item')
+        dst_user = message_g.dstnodes(ntype='user')
+        dst_item = message_g.dstnodes(ntype='item')
+
+        I_u_mask = (message_g.out_degrees(etype='rate') > 0).float()[dst_user]
+        I_u_factor = (I_u_mask / torch.sqrt(message_g.out_degrees(etype='rate').clamp(min=1))[dst_user]).reshape(-1, 1)
+        normed_y = I_u_factor * self.y_gcn(message_g,
+                                           ({'item': y_w['item'][src_item]}, {'user': y_w['user'][dst_user]}))[
+            'user']  # 'user': user_num * embedsize
+
+        T_u_mask = (message_g.in_degrees(etype='trusted-by') > 0).float()[dst_user]
+        T_u_factor = (T_u_mask / torch.sqrt(message_g.in_degrees(etype='trusted-by').clamp(min=1))[dst_user]).reshape(
+            -1, 1)
+        normed_w = T_u_factor * self.w_gcn(message_g,
+                                           ({'user': y_w['user'][src_user]}, {'user': y_w['user'][dst_user]}))[
+            'user']  # 'user': user_num * embedsize
+
+        bias = self.bias({'user': dst_user, 'item': dst_item})
+        res_embedding = {
+            'user': normed_w + normed_y + p_q['user'][dst_user],
+            'item': p_q['item'][dst_item]
+        }
+        if mode == 'evaluate':
+            self.res_embedding = res_embedding
+            self.res_bias = bias
+        else:
+            return res_embedding, bias
+
+    def get_final_embeddings(self, output_nodes, etype):
+        u_embed = self.res_embedding['user'][output_nodes]
+        if etype == 'rate':
+            v_embed = self.res_embedding['item']
+        else:
+            v_embed = self.res_embedding['user']
+        u_bias = self.res_bias['user'][output_nodes]
+        v_bias = self.res_bias['item']
+        return u_embed, v_embed, u_bias, v_bias
 
     def forward(self, message_g, pos_pred_g, neg_pred_g, input_nodes=None):
         if input_nodes is None:
@@ -103,14 +150,12 @@ class TrustSVDModel(nn.Module):
             'user': normed_w + normed_y + p_q['user'][dst_user],
             'item': p_q['item'][dst_item]
         }
-
         pos_score = self.pred(pos_pred_g, 'rate', res_embedding, bias) + self.global_bias
         neg_score = self.pred(neg_pred_g, 'rate', res_embedding, bias) + self.global_bias
 
         # 正则化
         ## social link reg
         with message_g.local_scope():
-
             message_g.srcnodes['user'].data['w'] = y_w['user']
             message_g.dstnodes['user'].data['p'] = p_q['user'][message_g.dstnodes(ntype='user')]
             # 这里是v trusted-by u，所以前面的节点特征用w，后面的用p

@@ -46,7 +46,7 @@ class BaseModel(nn.Module):
             v_embed = self.res_embedding['item']
         else:
             v_embed = self.res_embedding['user']
-        return u_embed, v_embed
+        return u_embed, v_embed, None, None
 
     def compute_final_embeddings(self, message_g, idx=None):
         pass

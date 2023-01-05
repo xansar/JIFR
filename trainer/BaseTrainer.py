@@ -507,9 +507,17 @@ class BaseTrainer:
         # 计算batch user在所有item上的评分
         ## 获取embeddings
         ### user_embedding + item_embedding/user_embedding
-        u_embed, v_embed = self.model.get_final_embeddings(batch_users, etype)
+        u_embed, v_embed, u_bias, v_bias= self.model.get_final_embeddings(batch_users, etype)
         ### all rating
         rating = torch.matmul(u_embed, v_embed.t())
+        assert rating.shape == (len(batch_users), v_embed.shape[0])
+        if u_bias is not None:
+            assert u_bias.shape == (len(batch_users), 1)
+            assert v_bias.shape == (v_embed.shape[0], 1)
+            rating = rating + u_bias
+            del u_bias
+            rating = rating + v_bias.t()
+            del v_bias
 
         # 计算负样本列表
         ## 这里是建一个一个id,item的列表，从而将rating矩阵中(id,item)位置的rating mask
