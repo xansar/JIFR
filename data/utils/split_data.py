@@ -57,6 +57,7 @@ def split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1, raw_pth='../Exten
         # train_lst = lst[:train_size]
         # val_lst = lst[train_size: train_size + val_size]
         # test_lst = lst[train_size + val_size:]
+        assert len(val_lst) > 0 and len(test_lst) > 0
         return train_lst, val_lst, test_lst
 
     def write_data(train_, val_, test_, type, mode='w'):
@@ -104,7 +105,10 @@ def split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1, raw_pth='../Exten
         json.dump({'rate': rate_gt, 'link': link_gt}, f, indent=2)
 
 if __name__ == '__main__':
-    split_data(0.8, 0.1, 0.1, raw_pth='../Epinions')
+    datas = ['Epinions', 'Ciao', 'Yelp', 'Flickr']
+    # datas = ['Flickr']
+    for data_name in datas:
+        split_data(0.8, 0.1, 0.1, raw_pth=f'../{data_name}')
 
 
 

@@ -36,24 +36,24 @@ def filter_data(data_name, threshold=100, rate_min=3):
     link_df = pd.read_csv(f'../{data_name}/behavior_data/link.csv', delimiter=',')
 
     def continue_loop(rate_df_filter, link_df_filter):
-        flag_1 = (rate_df_filter['user'].value_counts() < threshold).sum()
-        flag_2 = (rate_df_filter['item'].value_counts() < threshold).sum()
-        flag_3 = (link_df_filter['user1'].value_counts() < threshold).sum()
-        flag_4 = (~rate_df_filter.user.isin(link_df_filter.user1)).sum()
-        flag_5 = (~link_df_filter.user1.isin(rate_df_filter.user)).sum()
-        flag_6 = (rate_df_filter.rate < rate_min).sum()
-        flag_7 = (~link_df_filter.user2.isin(link_df_filter.user1)).sum()
+        cnt_1 = (rate_df_filter['user'].value_counts() < threshold).sum()
+        cnt_2 = (rate_df_filter['item'].value_counts() < threshold).sum()
+        cnt_3 = (link_df_filter['user1'].value_counts() < threshold).sum()
+        cnt_4 = (~rate_df_filter.user.isin(link_df_filter.user1)).sum()
+        cnt_5 = (~link_df_filter.user1.isin(rate_df_filter.user)).sum()
+        cnt_6 = (rate_df_filter.rate < rate_min).sum()
+        cnt_7 = (~link_df_filter.user2.isin(link_df_filter.user1)).sum()
 
         for i in range(1, 8):
-            print(eval(f'flag_{i}'), end='\t')
+            print(eval(f'cnt_{i}'), end='\t')
         print('')
-        return flag_1 > 1 or flag_2 > 1 or flag_3 > 1 or flag_4 > 1 or flag_5 > 1 or flag_6 > 1 or flag_7 > 1
+        return cnt_1 > 0 or cnt_2 > 0 or cnt_3 > 0 or cnt_4 > 0 or cnt_5 > 0 or cnt_6 > 0 or cnt_7 > 0
 
     def single_process(rate_df_filter, link_df_filter):
         # 所有用户至少有四个邻居
         link_df_filter = link_df_filter[link_df_filter.groupby('user1').user1.transform('count') >= threshold]
 
-        # 将rate中user，item出现少于四次的过滤掉
+        # 将rate中user，item出现少于threshold次的过滤掉
         rate_df_filter = rate_df_filter[rate_df_filter.groupby('user').user.transform('count') >= threshold]
         rate_df_filter = rate_df_filter[rate_df_filter.groupby('item').item.transform('count') >= threshold]
         rate_df_filter = rate_df_filter[rate_df_filter.rate >= rate_min]
@@ -173,8 +173,14 @@ def relabel(data_name):
 
 
 if __name__ == '__main__':
-    data_name = 'Epinions'
-    transfer_data(data_name)
-    # rate_min: Epinions 3, Ciao 3, Yelp -1, Flickr -1
-    filter_data(data_name, threshold=2, rate_min=3)
-    relabel(data_name)
+    # data_name = 'Epinions'
+    ratemin = {
+        'Epinions': 3, 'Ciao': 3, 'Yelp': -1, 'Flickr': -1
+    }
+    datas = ['Epinions', 'Ciao', 'Yelp', 'Flickr']
+    # datas = ['Flickr']
+    for data_name in datas:
+        transfer_data(data_name)
+        # rate_min: Epinions 3, Ciao 3, Yelp -1, Flickr -1
+        filter_data(data_name, threshold=2, rate_min=ratemin[data_name])
+        relabel(data_name)

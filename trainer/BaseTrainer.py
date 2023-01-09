@@ -23,6 +23,7 @@ import numpy as np
 import optuna
 
 from tqdm import tqdm, trange
+from tabulate import tabulate
 
 import time
 import os
@@ -30,7 +31,8 @@ import json
 import copy
 
 cf_model = ['LightGCN', 'MF', 'NCL']
-social_model = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec', 'NJBP', 'SocialLGN', 'SSCL']
+social_model = ['MutualRec', 'FusionLightGCN', 'DiffnetPP', 'GraphRec',
+                'NJBP', 'SocialLGN', 'SSCL', 'SNCL']
 directed_social_model = ['TrustSVD', 'SVDPP', 'Sorec', 'SocialMF']
 link_model = ['AA', 'Node2Vec']
 
@@ -60,11 +62,19 @@ class BaseTrainer:
             os.makedirs(os.path.join(log_dir, self.model_name, self.data_name))
         trial_text = 'HyperParamsSearch_' if self.trial is not None else ''
         self.log_pth = os.path.join(log_dir, self.model_name, self.data_name, f'{trial_text}{self.task}_{self.random_seed}_{self.model_name}.txt')
+
         # 设置保存地址
         save_dir = self.config['TRAIN']['save_pth']
         if not os.path.isdir(os.path.join(save_dir, self.model_name, self.data_name)):
             os.makedirs(os.path.join(save_dir, self.model_name, self.data_name))
         self.save_pth = os.path.join(save_dir, self.model_name, self.data_name, f'{trial_text}{self.task}_{self.random_seed}_{self.model_name}.pth')
+
+        # 早停
+        self.early_stopper = EarlyStopper(
+            patience=eval(config['OPTIM']['patience']),
+            minimum_impro=eval(config['OPTIM']['minimum_impro']),
+        )
+
         # 打印config
         self._print_config()
 
@@ -81,11 +91,12 @@ class BaseTrainer:
         self.model_name = config['MODEL']['model_name']
         self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
-        self.neg_num = eval(config['DATA']['neg_num'])
+        # self.neg_num = eval(config['DATA']['neg_num'])
         self.train_neg_num = eval(config['DATA']['train_neg_num'])
         self.eval_step = eval(config['TRAIN']['eval_step'])
         self.warm_epoch = eval(config['TRAIN']['warm_epoch'])
         self.ks = eval(config['METRIC']['ks'])
+        self.indicator_k = self.ks[0] # 用来防止过拟合
         self.device = torch.device(config['TRAIN']['device'])
 
         self._build()
@@ -126,10 +137,10 @@ class BaseTrainer:
             weight_decay = eval(config['OPTIM']['embedding_weight_decay'])
             self.optimizer = eval(optimizer_name)(lr=lr, params=self.model.parameters(), weight_decay=weight_decay)
 
-        lr_scheduler_name = 'torch.optim.lr_scheduler.' + config['OPTIM']['lr_scheduler']
-        T_0 = eval(config['OPTIM']['T_0'])  # 学习率第一次重启的epoch数
-        T_mult = eval(config['OPTIM']['T_mult'])  # 学习率衰减epoch数变化倍率
-        self.lr_scheduler = eval(lr_scheduler_name)(self.optimizer, T_0=T_0, T_mult=T_mult, verbose=self.is_log)
+        # lr_scheduler_name = 'torch.optim.lr_scheduler.' + config['OPTIM']['lr_scheduler']
+        # T_0 = eval(config['OPTIM']['T_0'])  # 学习率第一次重启的epoch数
+        # T_mult = eval(config['OPTIM']['T_mult'])  # 学习率衰减epoch数变化倍率
+        # self.lr_scheduler = eval(lr_scheduler_name)(self.optimizer, T_0=T_0, T_mult=T_mult, verbose=self.is_log)
 
     def _build_metric(self):
         # metric
@@ -143,27 +154,32 @@ class BaseTrainer:
         self.g = dataset[0]
         self.g = self._get_model_specific_etype_graph(self.g)
 
-        self.train_rate_size = dataset.train_rate_size
-        self.val_rate_size = dataset.val_rate_size
-        self.train_link_size = dataset.train_link_size
-        self.val_link_size = dataset.val_link_size
+        # self.train_rate_size = dataset.train_rate_size
+        # self.val_rate_size = dataset.val_rate_size
+        # self.train_link_size = dataset.train_link_size
+        # self.val_link_size = dataset.val_link_size
 
         train_batch_size = eval(config['DATA']['train_batch_size'])
         val_batch_size = eval(config['DATA']['eval_batch_size'])
         test_batch_size = eval(config['DATA']['eval_batch_size'])
         num_workers = eval(config['DATA']['num_workers'])
         gcn_layer_num = eval(config['MODEL'].get('gcn_layer_num', '1'))
+        message_g = self.g
+        # message_g, val_g, test_g, train_eids_dict = self._get_graphs_and_eids()
 
-        message_g, val_g, test_g, train_eids_dict = self._get_graphs_and_eids()
         if 'step_per_epoch' not in config['TRAIN'].keys():
             # 训练时进行采样
             # 分bin测试用
+            if self.task == 'Rate':
+                eid_for_loader = {('user', 'rate', 'item'): message_g.edges(etype='rate', form='eid')}
+            else:
+                eid_for_loader = {('user', 'trust', 'user'): message_g.edges(etype='trust', form='eid')}
+
             if self.bin_sep_lst is not None:
-                self.get_bins_userid_lst(message_g)
-                # self.train_e_id_lst, self.val_e_id_lst, self.test_e_id_lst = self.get_bins_eid_lst(
-                #     message_g, val_g, test_g, train_eids_dict)
+                self.get_bins_userid_lst(dataset)
+
             self._get_history_lst()  # 获取历史记录，构建负采样
-            self.train_loader = self._get_loader(mode='train', g=message_g, eid_dict=train_eids_dict,
+            self.train_loader = self._get_loader(mode='train', g=message_g, eid_dict=eid_for_loader,
                                                  batch_size=train_batch_size, num_workers=num_workers, is_shuffle=True,
                                                  num_layers=gcn_layer_num, k=self.train_neg_num)
         else:
@@ -171,9 +187,8 @@ class BaseTrainer:
             self.step_per_epoch = eval(config['TRAIN']['step_per_epoch'])
             # 分bin测试用
             if self.bin_sep_lst is not None:
-                self.get_bins_userid_lst(message_g)
-                # self.train_e_id_lst, self.val_e_id_lst, self.test_e_id_lst = self.get_bins_eid_lst(
-                #     message_g, val_g, test_g, train_eids_dict)
+                self.get_bins_userid_lst(dataset)
+
             self._get_history_lst()
             self.train_loader = range(eval(self.config['TRAIN']['step_per_epoch']))
 
@@ -269,7 +284,11 @@ class BaseTrainer:
             eid_dict = other_args['eid_dict']
             eid_dict = {k: v.to(self.device) for k, v in eid_dict.items()}
             num_layers = other_args['num_layers']
-            sample_nums = [(l + 1) * 5 for l in range(num_layers)]
+            assert 2 >= num_layers > 0
+            if num_layers == 2:
+                sample_nums = [10, 25]
+            else:
+                sample_nums = [10]
             k = other_args['k']
             sampler = dgl.dataloading.NeighborSampler(sample_nums)
             # 因为这里的g是只有message g和验证边的
@@ -381,47 +400,138 @@ class BaseTrainer:
             self.loss_func = self.loss_func.to(self.config['TRAIN']['device'])
             self.config['TRAIN']['device'] = device
 
-    def _generate_metric_str(self, metric_str, is_val=True):
+    def print_best_metrics(self):
+        metric_str = ''
+        for t in self.metric.task_lst:
+            for m in self.metric.metric_name:
+                for k in self.metric.ks:
+                    v = self.metric.metric_dict[t][m][k]['best']
+                    metric_str += f'{t} best: {m}@{k}: {v:.4f}\t'
+
+                    # if self.metric.bin_sep_lst is not None:
+                    #     metric_str += '\n'
+                    #     # bins_best_metric_value = self.metric.metric_dict[t][m][k]['bin_best']
+                    #     # info_table = self.generate_bins_table_info(
+                    #     #     bins_best_metric_value,
+                    #     #     f'{m}@{k}'
+                    #     # )
+                    #     # metric_str += info_table
+                    #     for i in range(len(self.metric.bin_sep_lst)):
+                    #         v = self.metric.metric_dict[t][m][k]['bin_best'][i]
+                    #         s = self.metric.bin_sep_lst[i]
+                    #         if i == len(self.metric.bin_sep_lst) - 1:
+                    #             e = '∞'
+                    #         else:
+                    #             e = self.metric.bin_sep_lst[i + 1]
+                    #         metric_str += f'{t} best: {m}@{k} in {s}-{e}: {v:.4f}\t'
+                    #     metric_str += '\n'
+                metric_str += '\n'
+        return metric_str
+
+    def _generate_metric_str(self, metric_str, is_val=True, print_best=False):
         # 根据metric结果，生成文本
         for t in self.metric.metric_dict.keys():
+            metric_table = [[t] + self.ks]
             for m in self.metric.metric_dict[t].keys():
                 metric_vis_dict = {}
                 bin_metric_vis_dict = {}
+                cur_row = [m]
                 for k in self.metric.metric_dict[t][m].keys():
-                    v = self.metric.metric_dict[t][m][k]['value']
+                    if print_best:
+                        v = self.metric.metric_dict[t][m][k]['best']
+                    else:
+                        v = self.metric.metric_dict[t][m][k]['value']
+
+                    cur_row.append(v)
                     if self.is_visulized:
                         metric_vis_dict[f'{m}@{k}'] = v
-                    metric_str += f'{t} {m}@{k}: {v:.4f}\t'
+                    # metric_str += f'{t} {m}@{k}: {v:.4f}\t'
 
-                    if self.bin_sep_lst is not None:
+
+                    if self.bin_sep_lst is not None and not is_val:
                         metric_str += '\n'
-                        bin_metric_vis_dict[k] = {}
-                        for i in range(len(self.bin_sep_lst)):
-                            v = self.metric.metric_dict[t][m][k]['bin_value'][i]
-                            s = self.bin_sep_lst[i]
-                            if i == len(self.bin_sep_lst) - 1:
-                                e = '∞'
-                            else:
-                                e = self.bin_sep_lst[i + 1]
-
-                            if self.is_visulized:
-                                bin_metric_vis_dict[k][f'{m}@{k}_in_{s}-{e}'] = v
-
-                            metric_str += f'{t} {m}@{k} in {s}-{e}: {v:.4f}\t'
-                        metric_str += '\n'
-
+                        bins_test_metric_value = self.metric.metric_dict[t][m][k]['bin_value']
+                        info_table = self.generate_bins_table_info(
+                            bins_test_metric_value,
+                            f'{m}@{k}'
+                        )
+                        metric_str += info_table + '\n'
+                        # bin_metric_vis_dict[k] = {}
+                        # for i in range(len(self.bin_sep_lst)):
+                        #     v = self.metric.metric_dict[t][m][k]['bin_value'][i]
+                        #     s = self.bin_sep_lst[i]
+                        #     if i == len(self.bin_sep_lst) - 1:
+                        #         e = '∞'
+                        #     else:
+                        #         e = self.bin_sep_lst[i + 1]
+                        #
+                        #     if self.is_visulized:
+                        #         bin_metric_vis_dict[k][f'{m}@{k}_in_{s}-{e}'] = v
+                        #
+                        #     metric_str += f'{t} {m}@{k} in {s}-{e}: {v:.4f}\t'
+                        # metric_str += '\n'
+                metric_table.append(cur_row)
                 if self.is_visulized and is_val:
                     self.writer.add_scalars(f'{m}/total_{m}', metric_vis_dict, self.vis_cnt)
-                    if self.bin_sep_lst is not None:
-                        for k in bin_metric_vis_dict.keys():
-                            self.writer.add_scalars(f'{m}/bin_{m}/{m}@{k}', bin_metric_vis_dict[k], self.vis_cnt)
-                metric_str += '\n'
-
+                    # if self.bin_sep_lst is not None:
+                    #     for k in bin_metric_vis_dict.keys():
+                    #         self.writer.add_scalars(f'{m}/bin_{m}/{m}@{k}', bin_metric_vis_dict[k], self.vis_cnt)
+                # metric_str += '\n'
+            metric_str += tabulate(metric_table, headers='firstrow', tablefmt='simple', floatfmt='.4f')
         if self.is_visulized:
             self.vis_cnt += 1
         # if is_val:
         #     self.metric.clear_metrics()
         return metric_str
+
+    # def _generate_metric_str(self, metric_str, is_val=True):
+    #     # 根据metric结果，生成文本
+    #     for t in self.metric.metric_dict.keys():
+    #         for m in self.metric.metric_dict[t].keys():
+    #             metric_vis_dict = {}
+    #             bin_metric_vis_dict = {}
+    #             for k in self.metric.metric_dict[t][m].keys():
+    #                 v = self.metric.metric_dict[t][m][k]['value']
+    #                 if self.is_visulized:
+    #                     metric_vis_dict[f'{m}@{k}'] = v
+    #                 metric_str += f'{t} {m}@{k}: {v:.4f}\t'
+    #
+    #
+    #                 if self.bin_sep_lst is not None and not is_val:
+    #                     metric_str += '\n'
+    #                     bins_test_metric_value = self.metric.metric_dict[t][m][k]['bin_value']
+    #                     info_table = self.generate_bins_table_info(
+    #                         bins_test_metric_value,
+    #                         f'{m}@{k}'
+    #                     )
+    #                     metric_str += info_table
+    #                     # bin_metric_vis_dict[k] = {}
+    #                     # for i in range(len(self.bin_sep_lst)):
+    #                     #     v = self.metric.metric_dict[t][m][k]['bin_value'][i]
+    #                     #     s = self.bin_sep_lst[i]
+    #                     #     if i == len(self.bin_sep_lst) - 1:
+    #                     #         e = '∞'
+    #                     #     else:
+    #                     #         e = self.bin_sep_lst[i + 1]
+    #                     #
+    #                     #     if self.is_visulized:
+    #                     #         bin_metric_vis_dict[k][f'{m}@{k}_in_{s}-{e}'] = v
+    #                     #
+    #                     #     metric_str += f'{t} {m}@{k} in {s}-{e}: {v:.4f}\t'
+    #                     metric_str += '\n'
+    #
+    #             if self.is_visulized and is_val:
+    #                 self.writer.add_scalars(f'{m}/total_{m}', metric_vis_dict, self.vis_cnt)
+    #                 if self.bin_sep_lst is not None:
+    #                     for k in bin_metric_vis_dict.keys():
+    #                         self.writer.add_scalars(f'{m}/bin_{m}/{m}@{k}', bin_metric_vis_dict[k], self.vis_cnt)
+    #             metric_str += '\n'
+    #
+    #     if self.is_visulized:
+    #         self.vis_cnt += 1
+    #     # if is_val:
+    #     #     self.metric.clear_metrics()
+    #     return metric_str
 
     def _log(self, str_, mode='a'):
         # 将log写入文件
@@ -436,9 +546,9 @@ class BaseTrainer:
             task = 'Rate'
         else:
             task = self.task
-        k = self.ks[-1]
-        best_value = self.metric.metric_dict[task][self.metric.save_metric][k]['best']
-        self.print_info(self._log(f"Save Best {self.metric.save_metric} {best_value:.4f} Model!"))
+
+        best_value = self.metric.metric_dict[task][self.metric.save_metric][self.indicator_k]['best']
+        self.print_info(self._log(f"Save Best {self.metric.save_metric}@{self.indicator_k} {best_value:.4f} Model!"))
         dir_pth, _ = os.path.split(save_pth)
         if not os.path.isdir(dir_pth):
             father_dir_pth, _ = os.path.split(dir_pth)
@@ -452,44 +562,96 @@ class BaseTrainer:
             task = 'Rate'
         else:
             task = self.task
-        k = self.ks[-1]
-        best_value = self.metric.metric_dict[task][self.metric.save_metric][k]['best']
+
+        best_value = self.metric.metric_dict[task][self.metric.save_metric][self.indicator_k]['best']
         self.print_info(self._log(f"Load Best {self.metric.save_metric} {best_value:.4f} Model!"))
         state_dict = torch.load(save_pth)
         self.model.load_state_dict(state_dict, strict=strict)
 
 
-    def get_bins_userid_lst(self, message_g):
-        if self.task == 'Rate':
-            etype = 'rate'
-        else:
-            etype = 'trust'
+    # def get_bins_userid_lst(self, message_g):
+    #     if self.task == 'Rate':
+    #         etype = 'rate'
+    #     else:
+    #         etype = 'trust'
+    #
+    #     # 根据message g确定用户所属的类别
+    #     # 分组内保存的是用户的id
+    #
+    #     # 分组起点终点
+    #     self.bins_start_end_lst = []
+    #     # u_num_lst = []
+    #     self.u_lst = []
+    #     for i in range(len(self.bin_sep_lst)):
+    #         # 获取对应的mask，找到train_g里面在当前度范围内的用户id
+    #         s = self.bin_sep_lst[i]
+    #         if i == len(self.bin_sep_lst) - 1:
+    #             mask = (message_g.out_degrees(etype=etype) >= s)
+    #             e = '∞'
+    #         else:
+    #             e = self.bin_sep_lst[i + 1]
+    #             mask = (message_g.out_degrees(etype=etype) >= s) * \
+    #                    (message_g.out_degrees(etype=etype) < e)
+    #         self.bins_start_end_lst.append((s, e))
+    #         # 所有在这个度范围内的用户id tensor
+    #         u_lst = message_g.nodes('user').masked_select(mask)
+    #         self.print_info(self._log(f'{s}-{e}: {len(u_lst)}'))
+    #         self.u_lst.append(u_lst)
+    #     self.metric.bins_id_lst = self.u_lst
+    #     self.bins_id_lst = self.u_lst
 
-        # 根据message g确定用户所属的类别
-        # 分组内保存的是用户的id
+    def generate_bins_table_info(self, info, title):
+        info_table = []
+        for i in range(len(self.bin_sep_lst) + 2):
+            info_table.append([])
+            cur_row = info_table[-1]
+            for j in range(len(self.bin_sep_lst) + 2):
+                if i == 0:
+                    if j == 0:
+                        cur_row.append(title)
+                    elif j == len(self.bin_sep_lst) + 1:
+                        cur_row.append('Row Sum')
+                    else:
+                        # 空位是rate_s和rate_e
+                        _, _, link_s, link_e = self.bins_start_end_lst[0][j - 1]
+                        cur_row.append(f'L: {link_s}-{link_e}')
+                else:
+                    if j == 0:
+                        if i == len(self.bin_sep_lst) + 1:
+                            cur_row.append('Col Sum')
+                        else:
+                            rate_s, rate_e, _, _ = self.bins_start_end_lst[i - 1][0]
+                            cur_row.append(f'R: {rate_s}-{rate_e}')
+                    else:
+                        if isinstance(info[i - 1][j - 1], list):
+                            cur_row.append(f'{"/".join([str(n) for n in info[i - 1][j - 1]])}')
+                        else:
+                            cur_row.append(f'{info[i - 1][j - 1]}')
+        return tabulate(info_table, headers='firstrow', tablefmt='fancy_grid', floatfmt='.4f')
 
-        # 分组起点终点
-        self.bins_start_end_lst = []
-        # u_num_lst = []
-        self.u_lst = []
-        for i in range(len(self.bin_sep_lst)):
-            # 获取对应的mask，找到train_g里面在当前度范围内的用户id
-            s = self.bin_sep_lst[i]
-            if i == len(self.bin_sep_lst) - 1:
-                mask = (message_g.out_degrees(etype=etype) >= s)
-                e = '∞'
-            else:
-                e = self.bin_sep_lst[i + 1]
-                mask = (message_g.out_degrees(etype=etype) >= s) * \
-                       (message_g.out_degrees(etype=etype) < e)
-            self.bins_start_end_lst.append((s, e))
-            # 所有在这个度范围内的用户id tensor
-            u_lst = message_g.nodes('user').masked_select(mask)
-            self.print_info(self._log(f'{s}-{e}: {len(u_lst)}'))
-            self.u_lst.append(u_lst)
-        self.metric.bins_id_lst = self.u_lst
-        self.bins_id_lst = self.u_lst
+    def get_bins_userid_lst(self, dataset):
+        self.bins_start_end_lst = dataset.bins_start_end_lst
+        self.bins_id_lst = dataset.u_lst
+        self.metric.bins_id_lst = dataset.u_lst
+        self.bin_user_num = dataset.bin_user_num
+        self.rate_edges_num = dataset.rate_edges_num
+        self.link_edges_num = dataset.link_edges_num
+        bins_user_edges_num = []
+        for i in range(len(self.bin_sep_lst) + 1):  #+1是多出来的汇总行/列
+            bins_user_edges_num.append([])
+            for j in range(len(self.bin_sep_lst) + 1):
+                bins_user_edges_num[-1].append(
+                    [self.bin_user_num[i][j], self.rate_edges_num[i][j], self.link_edges_num[i][j]]
+                )
 
+        # bins_user_num = \
+        #     [[len(self.bins_id_lst[i][j]) for j in range(len(self.bin_sep_lst))] for i in range(len(self.bin_sep_lst))]
+        info_table = self.generate_bins_table_info(
+            bins_user_edges_num,
+            '#User/#Rate/#Link'
+        )
+        self.print_info(self._log('User Rate Degree and Link Degree Distribution Table'))
+        self.print_info(self._log(info_table))
 
     def get_full_ratings(self, batch_users, message_g, input_nodes, mode='val'):
         # batch_users: 确保有序，因为这样获取pos item和gt的时候，就可以直接切片操作
@@ -503,6 +665,7 @@ class BaseTrainer:
             etype = 'trust'
         all_pos_items = self.pos_items[etype][min_user: max_user] # 调用函数，输入batchusers，返回一个包含所有互动过物品的id列表
         gt = self.gt[mode][min_user: max_user + 1] # 调用函数，输出batch users，返回测试集中的互动列表，这个是开区间
+        assert torch.tensor([len(gt[i]) for i in range(len(gt))]).min() > 0
         batch_users = batch_users.to(self.device)
         # 计算batch user在所有item上的评分
         ## 获取embeddings
@@ -612,7 +775,7 @@ class BaseTrainer:
         all_loss_lst = [0.0 for _ in range(len(loss_name))]
 
         val_true_batch_cnt = [0 for _ in range(len(loss_name))]
-        if self.is_log:
+        if self.is_log and mode == 'train':
             bar_loader = tqdm(enumerate(data_loader), total=len(data_loader))
         else:
             bar_loader = enumerate(data_loader)
@@ -671,7 +834,7 @@ class BaseTrainer:
 
             # train
             all_loss_lst = self.wrap_step_loop('train', self.train_loader, side_info, loss_name)
-            metric_str = f'Train Epoch: {e}\n'
+            metric_str = f'\nEpoch: {e}\n'
             for j in range(len(loss_name)):
                 metric_str += f'{loss_name[j]}: {all_loss_lst[j]:.4f}\t'
             self.print_info(self._log(metric_str))
@@ -681,11 +844,11 @@ class BaseTrainer:
                 self.metric.clear_metrics()
                 all_loss_lst = self.wrap_step_loop('evaluate', self.val_loader, side_info, loss_name)
                 self.metric.get_batch_metrics()
-                metric_str = f'Evaluate Epoch: {e}\n'
-                for j in range(len(loss_name)):
-                    metric_str += f'{loss_name[j]}: {all_loss_lst[j]:.4f}\t'
-                metric_str += '\n'
-                metric_str = self._generate_metric_str(metric_str)
+                # metric_str = f'Evaluate Epoch: {e}\n'
+                # for j in range(len(loss_name)):
+                #     metric_str += f'{loss_name[j]}: {all_loss_lst[j]:.4f}\t'
+                # metric_str += '\n'
+                metric_str = self._generate_metric_str('')
                 self.print_info(self._log(metric_str))
 
                 # 保存最好模型
@@ -694,25 +857,36 @@ class BaseTrainer:
                     self.metric.is_save = False
 
                 if self.trial is not None:
-                    k = self.ks[-1]
-                    intermediate_value = self.metric.metric_dict[self.task][self.metric.save_metric][k]['value']
+                    intermediate_value = self.metric.metric_dict[self.task][self.metric.save_metric][self.indicator_k]['value']
                     self.trial.report(intermediate_value, e)
                     if self.trial.should_prune():
                         raise optuna.TrialPruned()
+
                 # 是否早停
-                if self.metric.is_early_stop and e >= self.warm_epoch:
-                    self.print_info(self._log("Early Stop!"))
-                    break
+                indicator_metric = self.metric.metric_dict[self.task][self.metric.save_metric][self.indicator_k][
+                    'value']
+                self.early_stopper(indicator_metric)
+                if e > self.warm_epoch:
+                    if self.early_stopper.early_stop:
+                        self.print_info(self._log("Early Stop!"))
+                        break
                 else:
-                    self.metric.is_early_stop = False
+                    self.early_stopper.counter = 0
+
+                if self.early_stopper.counter > 0:
+                    self.print_info(
+                        self._log(f'EarlyStopping counter: {self.early_stopper.counter} out of {self.early_stopper.patience}'))
+                # else:
+                #     self.metric.is_early_stop = False
 
                 if self.is_visulized:
                     for j in range(len(loss_name)):
                         self.writer.add_scalar(f'loss/Train_{loss_name[j]}', all_loss_lst[j], e)
                         self.writer.add_scalar(f'loss/Val_{loss_name[j]}', val_loss_lst[j], e)
 
-            self.lr_scheduler.step()
-        self.print_info(self._log(self.metric.print_best_metrics()))
+            # self.lr_scheduler.step()
+        self.print_info(self._log(self._generate_metric_str('\nBest Val Metric\n', print_best=True)))
+        # self.print_info(self._log(self.print_best_metrics()))
 
         # 开始测试
         # 加载最优模型
@@ -721,10 +895,10 @@ class BaseTrainer:
 
         all_loss_lst = self.wrap_step_loop('test', self.test_loader, side_info, loss_name)
         self.metric.get_batch_metrics()
-        metric_str = f'Test Epoch: \n'
-        for j in range(len(loss_name)):
-            metric_str += f'{loss_name[j]}: {all_loss_lst[j]:.4f}\t'
-        metric_str += '\n'
+        metric_str = f'\nTest Epoch: \n'
+        # for j in range(len(loss_name)):
+        #     metric_str += f'{loss_name[j]}: {all_loss_lst[j]:.4f}\t'
+        # metric_str += '\n'
         metric_str = self._generate_metric_str(metric_str, is_val=False)
         self.print_info(self._log(metric_str))
         self.print_info("=" * 10 + "TRAIN END" + "=" * 10)
@@ -733,6 +907,6 @@ class BaseTrainer:
             task = 'Rate'
         else:
             task = self.task
-        metric_k = self.ks[-1]
-        test_nDCG = self.metric.metric_dict[task][self.metric.save_metric][metric_k]['value']
+        self.indicator_k = self.ks[0]
+        test_nDCG = self.metric.metric_dict[task][self.metric.save_metric][self.indicator_k]['value']
         return test_nDCG

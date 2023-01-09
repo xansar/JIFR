@@ -197,11 +197,13 @@ class SSCLModel(BaseModel):
             src = {'user': cur_embed['user']}
             dst = {'user': cur_embed['user']}
             social_embedding = layer(message_g, (src, dst))['user']
-            ## fusion layer
-            embeddings['user'] = self.fusion_layer_social_part(social_embedding) \
-                                 + self.fusion_layer_pref_part(embeddings['user'])
-            ## regularization
-            embeddings['user'] = F.normalize(embeddings['user'])
+            pref_embedding = embeddings['user']
+            # ## fusion layer
+            # embeddings['user'] = self.fusion_layer_social_part(social_embedding) \
+            #                      + self.fusion_layer_pref_part(pref_embedding)
+            # ## regularization
+            # embeddings['user'] = F.normalize(embeddings['user'])
+            embeddings['user'] = social_embedding + pref_embedding
 
             res_embedding['user'] = res_embedding['user'] + embeddings['user']
             res_embedding['item'] = res_embedding['item'] + embeddings['item']
@@ -290,11 +292,12 @@ class SSCLModel(BaseModel):
                     dst = {'user': cur_embed['user']}
                     social_embedding = layer(blocks[j], (src, dst))['user']
                     pref_embedding = embeddings['user']
-                    ## fusion layer
-                    embeddings['user'] = self.fusion_layer_social_part(social_embedding) \
-                                         + self.fusion_layer_pref_part(pref_embedding)
-                    ## regularization
-                    embeddings['user'] = F.normalize(embeddings['user'])
+                    # ## fusion layer
+                    # embeddings['user'] = self.fusion_layer_social_part(social_embedding) \
+                    #                      + self.fusion_layer_pref_part(pref_embedding)
+                    # ## regularization
+                    # embeddings['user'] = F.normalize(embeddings['user'])
+                    embeddings['user'] = social_embedding + pref_embedding
                 # ssl loss
                 if i == 1:
                     used_pref_embeddings['social'].append(social_embedding)

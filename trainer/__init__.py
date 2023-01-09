@@ -15,6 +15,7 @@ from .MFTrainer import *
 from .LightGCNTrainer import *
 from .NCLTrainer import *
 from .SSCLTrainer import *
+from .SNCLTrainer import *
 
 # classical social
 from .TrustSVDTrainer import *

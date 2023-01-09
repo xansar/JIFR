@@ -49,7 +49,7 @@ def parse_args():
     # Parses the arguments.
     # MODEL
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('-m', '--model_name', type=str, default='SSCL',
+    parser.add_argument('-m', '--model_name', type=str, default='SNCL',
                         help='Choose config')
     parser.add_argument('-s', '--embedding_size', type=str, default=None,
                         help='set embedding size')
@@ -59,8 +59,8 @@ def parse_args():
                         help='choose dataset')
     parser.add_argument('-tng', '--train_neg_num', type=int, default=None,
                         help='train neg num')
-    parser.add_argument('-ng', '--neg_num', type=int, default=None,
-                        help='eval neg num')
+    # parser.add_argument('-ng', '--neg_num', type=int, default=None,
+    #                     help='eval neg num')
     parser.add_argument('-tb', '--train_batch_size', type=int, default=None,
                         help='train batch size')
     parser.add_argument('-vb', '--eval_batch_size', type=int, default=None,
@@ -77,10 +77,10 @@ def parse_args():
                         help='mlp weight decay')
     parser.add_argument('-ew', '--embedding_weight_decay', type=float, default=None,
                         help='embed weight_decay')
-    parser.add_argument('-T', '--T_0', type=int, default=None,
-                        help='lr scheduler param T_0')
-    parser.add_argument('-Tm', '--T_m', type=int, default=None,
-                        help='lr scheduler param T_m')
+    # parser.add_argument('-T', '--T_0', type=int, default=None,
+    #                     help='lr scheduler param T_0')
+    # parser.add_argument('-Tm', '--T_m', type=int, default=None,
+    #                     help='lr scheduler param T_m')
 
     # TRAIN
     parser.add_argument('-t', '--task', type=str, default=None,

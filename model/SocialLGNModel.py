@@ -42,12 +42,12 @@ class SocialLGNModel(BaseModel):
         )
         self.layers = nn.ModuleList()
         self.fusion_layer_social_part = nn.Sequential(
-            nn.Linear(self.embedding_size, self.embedding_size),
+            nn.Linear(self.embedding_size, self.embedding_size, bias=False),
             nn.Tanh(),
             nn.Linear(self.embedding_size, self.embedding_size),
         )
         self.fusion_layer_pref_part = nn.Sequential(
-            nn.Linear(self.embedding_size, self.embedding_size),
+            nn.Linear(self.embedding_size, self.embedding_size, bias=False),
             nn.Tanh(),
             nn.Linear(self.embedding_size, self.embedding_size),
         )
@@ -88,8 +88,9 @@ class SocialLGNModel(BaseModel):
             dst = {'user': cur_embed['user']}
             social_embedding = layer(message_g, (src, dst))['user']
             ## fusion layer
-            embeddings['user'] = self.fusion_layer_social_part(social_embedding) \
-                                 + self.fusion_layer_pref_part(embeddings['user'])
+            # embeddings['user'] = self.fusion_layer_social_part(social_embedding) \
+            #                      + self.fusion_layer_pref_part(embeddings['user'])
+            embeddings['user'] += social_embedding
             ## regularization
             embeddings['user'] = F.normalize(embeddings['user'])
 
@@ -145,11 +146,13 @@ class SocialLGNModel(BaseModel):
                     src = {'user': cur_embed['user']}
                     dst = {'user': cur_embed['user']}
                     social_embedding = layer(blocks[j], (src, dst))['user']
+                    # 去掉mlp和正则化，效果变好了
                     ## fusion layer
-                    embeddings['user'] = self.fusion_layer_social_part(social_embedding) \
-                                         + self.fusion_layer_pref_part(embeddings['user'])
+                    # embeddings['user'] = self.fusion_layer_social_part(social_embedding) \
+                    #                      + self.fusion_layer_pref_part(embeddings['user'])
+                    embeddings['user'] += social_embedding
                     ## regularization
-                    embeddings['user'] = F.normalize(embeddings['user'])
+                    # embeddings['user'] = F.normalize(embeddings['user'])
 
                 res_embedding['user'] = res_embedding['user'] + embeddings['user']
                 res_embedding['item'] = res_embedding['item'] + embeddings['item']

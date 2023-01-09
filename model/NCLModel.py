@@ -17,6 +17,7 @@ import dgl.nn.pytorch as dglnn
 import dgl.function as fn
 
 from .kmeans import kmeans
+# import faiss
 from .utils import init_weights, BaseModel
 
 class HeteroDotProductPredictor(nn.Module):
@@ -67,6 +68,16 @@ class NCLModel(BaseModel):
         total_score = torch.matmul(norm_current_embedding, norm_previous_totoal_embedding.transpose(0, 1))
         pos_score = torch.exp(pos_score / self.ssl_temp) # n
         total_score = torch.exp(total_score / self.ssl_temp).sum(dim=1)# n*N
+
+        ## 试图减小显存的努力
+        # pos_score = torch.mul(norm_current_embedding, norm_previous_embedding).sum(dim=1)
+        # total_score = torch.matmul(norm_current_embedding, norm_previous_totoal_embedding.transpose(0, 1))
+        # pos_score.div_(self.ssl_temp)
+        # pos_score.exp_() # n
+        # total_score.div_(self.ssl_temp)
+        # total_score.exp_()
+        # total_score = total_score.sum(dim=1)# n*N
+
         ssl_loss = -torch.log(pos_score / total_score).sum()
         return ssl_loss
 
@@ -102,6 +113,11 @@ class NCLModel(BaseModel):
         # cluster_cents = kmeans.centroids
         #
         # _, I = kmeans.index.search(x, 1)
+        # # convert to cuda Tensors for broadcast
+        # centroids = torch.Tensor(cluster_cents).to(self.device)
+        # centroids = F.normalize(centroids, p=2, dim=1)
+        #
+        # node2cluster = torch.LongTensor(I).squeeze().to(self.device)
 
         cluster_ids_x, cluster_centers = kmeans(
             X=x, num_clusters=self.k, distance='euclidean', device=torch.device('cuda:0'),

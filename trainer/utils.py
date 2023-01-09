@@ -150,3 +150,22 @@ class NegativeSampler(object):
             neg_dst = neg_samples[idx_in_u_lst].reshape(-1)
             result_dict[etype] = (neg_src.to(g.device), neg_dst.to(g.device))
         return result_dict
+
+class EarlyStopper:
+    def __init__(self, patience=10, minimum_impro=0):
+        self.patience = patience
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.minimum_impro = minimum_impro  # 每次的最小提升
+
+    def __call__(self, indicator_metric, **kwargs):
+        if self.best_score is None:
+            self.best_score = indicator_metric
+        elif indicator_metric < self.best_score + self.minimum_impro:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_score = indicator_metric
+            self.counter = 0
