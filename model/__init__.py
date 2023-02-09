@@ -17,7 +17,6 @@ from .MFModel import *
 from .LightGCNModel import *
 from .NCLModel import *
 from .SSCLModel import *
-from .SNCLModel import *
 
 # classical social
 from .TrustSVDModel import *
@@ -28,11 +27,15 @@ from .NJBPModel import *
 
 # gnn social
 from .MutualRecModel import *
-from .FusionLightGCNModel import *
+from .FLGNModel import *
 from .DiffnetPPModel import *
 from .GraphRecModel import *
 from .SocialLGNModel import *
+from .FNCLModel import *
 
 # link
 from .AAModel import *
 from .Node2VecModel import *
+
+# joint
+from .CrossFireModel import *

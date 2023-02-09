@@ -35,19 +35,32 @@ def objective(trial):
     config = get_config(ARGS)
 
     # 设置需要搜索的参数及搜索空间
-    config['OPTIM']['embedding_learning_rate'] = str(trial.suggest_float('embed_lr', 1e-3, 1e0, log=True))
-    config['OPTIM']['embedding_weight_decay'] = str(trial.suggest_float('embed_w', 1e-3, 1e1, log=True))
+    config['OPTIM']['embedding_learning_rate'] = str(trial.suggest_float('embed_lr', 1e-5, 1e-1, log=True))
+    config['OPTIM']['embedding_weight_decay'] = str(trial.suggest_float('embed_w', 1e-4, 1e1, log=True))
+    if 'mlp_learning_rate' in config['OPTIM'].keys():    # 不对mlp embedding做正则化
+        config['OPTIM']['mlp_learning_rate'] = str(trial.suggest_float('mlp_lr', 1e-5, 1e-1, log=True))
     if 'mlp_weight_decay' in config['OPTIM'].keys():    # 不对mlp embedding做正则化
-        config['OPTIM']['mlp_learning_rate'] = str(trial.suggest_float('mlp_lr', 1e-3, 1e0, log=True))
+        config['OPTIM']['mlp_weight_decay'] = str(trial.suggest_float('mlp_w', 1e-6, 1e-1, log=True))
+
+    # trustSVD 参数
     if 'lamda_t' in config['OPTIM'].keys():    # trustsvd link loss 系数
-        config['OPTIM']['lamda_t'] = str(trial.suggest_float('lamda_t', 1e-2, 1e1, log=True))
+        config['OPTIM']['lamda_t'] = str(trial.suggest_float('lamda_t', 1e-3, 1e1, log=True))
+
+    # 下面是NCL、FNCL、SSCL的超参
+    if 'ssl_reg' in config['OPTIM'].keys():    # trustsvd link loss 系数
+        config['OPTIM']['ssl_reg'] = str(trial.suggest_float('ssl_reg', 1e-10, 1e-6, log=True))
+    if 'proto_reg' in config['OPTIM'].keys():    # trustsvd link loss 系数
+        config['OPTIM']['proto_reg'] = str(trial.suggest_float('proto_reg', 1e-10, 1e-6, log=True))
+    if 'ssl_temp' in config['OPTIM'].keys():    # trustsvd link loss 系数
+        config['OPTIM']['ssl_temp'] = str(trial.suggest_float('ssl_temp', 5e-2, 1e-1, log=True))
+
 
     # 重新抽取randomseed，根据这里的采样抽，防止重复
     config['TRAIN']['random_seed'] = str(int(eval(config['OPTIM']['embedding_weight_decay']) * 1561365))
     # random.seed(SEED)
 
-    # 学习率只衰减不重启
-    config['OPTIM']['T_0'] = str(15)
+    # # 学习率只衰减不重启
+    # config['OPTIM']['T_0'] = str(15)
     # 调参时不打印训练信息
     config['LOG'] = False
     with HiddenPrints():
@@ -56,9 +69,13 @@ def objective(trial):
 
 def single_search(model_name, n_trials, n_jobs):
     global SEED
+    hyper_params = optuna.samplers.TPESampler.hyperopt_parameters()
+    hyper_params['n_startup_trials'] = 20
+    hyper_params['n_ei_candidates'] = 12
+
     study = optuna.create_study(
         sampler=optuna.samplers.TPESampler(
-            **optuna.samplers.TPESampler.hyperopt_parameters(),
+            **hyper_params,
             seed=SEED,
             # 实验功能
             multivariate=True,
@@ -73,13 +90,13 @@ def single_search(model_name, n_trials, n_jobs):
     return study
 
 def visulization(study, model_name, data_name, save_dir=None):
-    funcs = [
-        'param_importances',
-        'parallel_coordinate',
-        'intermediate_values',
-        'optimization_history',
-        'contour',
-    ]
+    # funcs = [
+    #     'param_importances',
+    #     'parallel_coordinate',
+    #     'intermediate_values',
+    #     'optimization_history',
+    #     'contour',
+    # ]
     save_pth = os.path.join(save_dir, model_name, data_name)
     # for func in funcs:
     #     fig = eval('plot_' + func)(study)
@@ -97,7 +114,7 @@ def visulization(study, model_name, data_name, save_dir=None):
         f.close()
 
 
-def search(model_name, data_name, epoch, train_batch_size, eval_batch_size, n_trials, n_jobs):
+def search(model_name, data_name, epoch, train_batch_size, eval_batch_size, embedding_size, n_trials, n_jobs):
     global ARGS
     ARGS = parse_args()
     ARGS.model_name = model_name
@@ -105,6 +122,7 @@ def search(model_name, data_name, epoch, train_batch_size, eval_batch_size, n_tr
     ARGS.epoch = epoch
     ARGS.train_batch_size = train_batch_size
     ARGS.eval_batch_size = eval_batch_size
+    ARGS.embedding_size = embedding_size
 
     study = single_search(model_name, n_trials, n_jobs)
 
@@ -116,8 +134,8 @@ def search(model_name, data_name, epoch, train_batch_size, eval_batch_size, n_tr
     # )
 
 if __name__ == '__main__':
-    models = ['DiffnetPP']
-    datasets = ['Flickr']
+    models = ['MF']
+    datasets = ['Ciao']
     for model in models:
         for dataset in datasets:
             if not os.path.exists(os.path.join('./log', model, dataset)):
@@ -126,16 +144,17 @@ if __name__ == '__main__':
                 os.makedirs(os.path.join('./save', model, dataset))
             if not os.path.exists(os.path.join('./params_search', model, dataset)):
                 os.makedirs(os.path.join('./params_search', model, dataset))
-        search(
-            model_name='DiffnetPP',
-            data_name='Flickr',
-            train_batch_size=10240,
-            eval_batch_size=10240,
-            epoch=16,   # 每次实验运行的epoch数
-            n_trials=3,
-            n_jobs=3
-        )
-    #
+            search(
+                model_name=model,
+                data_name=dataset,
+                train_batch_size=4096,
+                eval_batch_size=4096,
+                embedding_size=32,
+                epoch=3,   # 每次实验运行的epoch数
+                n_trials=4,
+                n_jobs=4
+            )
+    # #
     # import os
     # os.system('/root/upload.sh')
 

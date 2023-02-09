@@ -15,7 +15,6 @@ from .MFTrainer import *
 from .LightGCNTrainer import *
 from .NCLTrainer import *
 from .SSCLTrainer import *
-from .SNCLTrainer import *
 
 # classical social
 from .TrustSVDTrainer import *
@@ -25,12 +24,16 @@ from .SocialMFTrainer import *
 from .NJBPTrainer import *
 
 # gnn social
-from .FusionLightGCNTrainer import *
+from .FLGNTrainer import *
 from .DiffnetPPTrainer import *
 from .MutualRecTrainer import *
 from .GraphRecTrainer import *
 from .SocialLGNTrainer import *
+from .FNCLTrainer import *
 
 # link
 from .AATrainer import *
 from .Node2VecTrainer import *
+
+# joint
+from .CrossFireTrainer import *

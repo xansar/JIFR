@@ -151,6 +151,7 @@ class NegativeSampler(object):
             result_dict[etype] = (neg_src.to(g.device), neg_dst.to(g.device))
         return result_dict
 
+# 早停用
 class EarlyStopper:
     def __init__(self, patience=10, minimum_impro=0):
         self.patience = patience
@@ -169,3 +170,70 @@ class EarlyStopper:
         else:
             self.best_score = indicator_metric
             self.counter = 0
+
+# 画图
+def draw_bins_metric_3D_bar_fig(info_table=None):
+    from mpl_toolkits.mplot3d import axes3d
+    import matplotlib.pyplot as plt
+    #
+    # ax = plt.figure().add_subplot(projection='3d')
+    # # X, Y, Z = axes3d.get_test_data(0.05)
+    # x = range(8)
+    # y = range(8)
+    # X, Y = np.meshgrid(x, y)
+    # # Z = np.random.rand(5, 5) * 0.3
+    # Z = np.array([
+    #         [0.0203, 0.0329, 0.0296, 0.0278, 0.0260, 0.0194, 0.0678, 0.0000],
+    #         [0.0254, 0.0333, 0.0232, 0.0372, 0.0229, 0.0580, 0.0000, 0.0538],
+    #         [0.0295, 0.0200, 0.0375, 0.0192, 0.0354, 0.0221, 0.0275, 0.0741],
+    #         [0.0425, 0.0336, 0.0403, 0.0366, 0.0389, 0.0489, 0.0307, 0.0745],
+    #         [0.0350, 0.0190, 0.0309, 0.0303, 0.0365, 0.0356, 0.0540, 0.0428],
+    #         [0.0464, 0.0395, 0.0372, 0.0471, 0.0467, 0.0478, 0.0375, 0.0463],
+    #         [0.0487, 0.0369, 0.0478, 0.0538, 0.0541, 0.0490, 0.0528, 0.0454],
+    #         [0.0477, 0.0806, 0.0763, 0.1041, 0.0678, 0.0661, 0.0709, 0.0606],
+    # ])
+
+    # setup the figure and axes
+    fig = plt.figure(figsize=(8, 3))
+    ax1 = fig.add_subplot(121, projection='3d')
+    ax2 = fig.add_subplot(122, projection='3d')
+
+    x = np.arange(8)
+    y = np.arange(8)
+    X, Y = np.meshgrid(x, y)
+    X, Y = X.ravel(), Y.ravel()
+    Z = np.array([
+            [0.0203, 0.0329, 0.0296, 0.0278, 0.0260, 0.0194, 0.0678, 0.0000],
+            [0.0254, 0.0333, 0.0232, 0.0372, 0.0229, 0.0580, 0.0000, 0.0538],
+            [0.0295, 0.0200, 0.0375, 0.0192, 0.0354, 0.0221, 0.0275, 0.0741],
+            [0.0425, 0.0336, 0.0403, 0.0366, 0.0389, 0.0489, 0.0307, 0.0745],
+            [0.0350, 0.0190, 0.0309, 0.0303, 0.0365, 0.0356, 0.0540, 0.0428],
+            [0.0464, 0.0395, 0.0372, 0.0471, 0.0467, 0.0478, 0.0375, 0.0463],
+            [0.0487, 0.0369, 0.0478, 0.0538, 0.0541, 0.0490, 0.0528, 0.0454],
+            [0.0477, 0.0806, 0.0763, 0.1041, 0.0678, 0.0661, 0.0709, 0.0606],
+    ])
+    top = Z.ravel()
+    bottom = np.zeros_like(top)
+    width = depth = 1
+
+    # # fake data
+    # _x = np.arange(4)
+    # _y = np.arange(5)
+    # _xx, _yy = np.meshgrid(_x, _y)
+    # x, y = _xx.ravel(), _yy.ravel()
+    #
+    # top = x + y
+    # bottom = np.zeros_like(top)
+    # width = depth = 1
+
+
+    ax1.bar3d(X, Y, bottom, width, depth, top, shade=True)
+    ax1.set_title('Shaded')
+
+    ax2.bar3d(X, Y, bottom, width, depth, top, shade=False)
+    ax2.set_title('Not Shaded')
+
+    plt.show()
+
+if __name__ == '__main__':
+    draw_bins_metric_3D_bar_fig()

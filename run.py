@@ -49,7 +49,7 @@ def parse_args():
     # Parses the arguments.
     # MODEL
     parser = argparse.ArgumentParser(description="Run Model.")
-    parser.add_argument('-m', '--model_name', type=str, default='SNCL',
+    parser.add_argument('-m', '--model_name', type=str, default='CrossFire',
                         help='Choose config')
     parser.add_argument('-s', '--embedding_size', type=str, default=None,
                         help='set embedding size')
@@ -138,7 +138,7 @@ def get_config(args):
         else:
             arg_value = getattr(args, arg)
             if arg_value is not None:
-                print(f'cmd change arg {arg}: {config[arg_class[arg]][arg]}-->{str(arg_value)}')
+                # print(f'cmd change arg {arg}: {config[arg_class[arg]][arg]}-->{str(arg_value)}')
                 config[arg_class[arg]][arg] = str(arg_value)
 
 

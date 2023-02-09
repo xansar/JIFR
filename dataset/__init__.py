@@ -10,4 +10,4 @@
 """
 
 # import lib
-from .datasetV2 import DGLRecDataset
+from .dataset import DGLRecDataset

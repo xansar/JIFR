@@ -87,7 +87,8 @@ class NCLTrainer(BaseTrainer):
                         input_nodes=input_nodes,
                         mode=mode
                     )
-                self.metric.compute_metrics(batch_users.cpu(), rating_k, gt, task=self.task)
+                is_test = True if mode == 'test' else False
+                self.metric.compute_metrics(batch_users.cpu(), rating_k, gt, task=self.task, is_test=is_test)
                 return torch.nan, torch.nan, torch.nan, torch.nan
                 #
                 # if isinstance(inputs['graphs'], int):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 """
-@File    :   SNCLTrainer.py
+@File    :   FNCLTrainer.py
 @Contact :   xansar@ruc.edu.cn
 
 @Modify Time      @Author    @Version    @Desciption
@@ -19,9 +19,9 @@ import os
 
 from .BaseTrainer import BaseTrainer
 
-class SNCLTrainer(BaseTrainer):
+class FNCLTrainer(BaseTrainer):
     def __init__(self, config, trial=None):
-        super(SNCLTrainer, self).__init__(config, trial=trial)
+        super(FNCLTrainer, self).__init__(config, trial=trial)
 
     def step(self, mode='train', **inputs):
         # 模型单步计算
@@ -87,7 +87,8 @@ class SNCLTrainer(BaseTrainer):
                         input_nodes=input_nodes,
                         mode=mode
                     )
-                self.metric.compute_metrics(batch_users.cpu(), rating_k, gt, task=self.task)
+                is_test = True if mode == 'test' else False
+                self.metric.compute_metrics(batch_users.cpu(), rating_k, gt, task=self.task, is_test=is_test)
                 return torch.nan, torch.nan, torch.nan, torch.nan
                 #
                 # if isinstance(inputs['graphs'], int):

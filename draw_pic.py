@@ -24,7 +24,7 @@ import os
 
 
 
-def get_data_from_log(models_lst, dataset_name="Epinions"):
+def get_data_from_log(models_lst, dataset_name, metrics, ks):
     data_dict = {}
     processed_data = {}
     for m in models_lst:
@@ -32,28 +32,32 @@ def get_data_from_log(models_lst, dataset_name="Epinions"):
         fn_lst = os.listdir(f'./log/{m}/{dataset_name}')
         data_dict[m] = {}
         processed_data[m] = {}
-        data_dict[m]['HR@3'] = []
-        data_dict[m]['HR@5'] = []
-        data_dict[m]['HR@10'] = []
-        data_dict[m]['nDCG@3'] = []
-        data_dict[m]['nDCG@5'] = []
-        data_dict[m]['nDCG@10'] = []
+        for metric in metrics:
+            for k in ks:
+                data_dict[m][f'{metric}@{k}'] = []
         for fn in fn_lst:
             with open(f'./log/{m}/{dataset_name}/{fn}', 'r', encoding='utf-8') as f:
-                data_lst = f.readlines()[-15:]
+                data_lst = f.readlines()[-3:]
+            # 确定表单的metric顺序
+            metrics = [d for d in re.compile(r'[A-Za-z]+').findall(' '.join(data_lst))]
             datas = [eval(d) for d in re.compile(r'\d\.\d{4}').findall(' '.join(data_lst))]
             # print(datas)
-            data_dict[m]['HR@3'].append(datas[:6])
-            data_dict[m]['HR@5'].append(datas[6:12])
-            data_dict[m]['HR@10'].append(datas[12:18])
-            data_dict[m]['nDCG@3'].append(datas[18:24])
-            data_dict[m]['nDCG@5'].append(datas[24:30])
-            data_dict[m]['nDCG@10'].append(datas[30:])
-        for metric in ['HR', 'nDCG']:
-            for k in [3, 5, 10]:
+            cnt = 0
+            for metric in metrics:
+                for k in ks:
+                    data_dict[m][f'{metric}@{k}'].append(datas[cnt])
+                    cnt += 1
+            # data_dict[m]['HR@3'].append(datas[:6])
+            # data_dict[m]['HR@5'].append(datas[6:12])
+            # data_dict[m]['HR@10'].append(datas[12:18])
+            # data_dict[m]['nDCG@3'].append(datas[18:24])
+            # data_dict[m]['nDCG@5'].append(datas[24:30])
+            # data_dict[m]['nDCG@10'].append(datas[30:])
+        for metric in metrics:
+            for k in ks:
                 processed_data[m][f'{metric}@{k}'] = {}
                 data_array = np.array(data_dict[m][f'{metric}@{k}'])
-                assert data_array.shape == (3, 6)
+                assert data_array.shape == (5,)
                 mean_ = np.mean(data_array, axis=0)
                 std_ = np.std(data_array, axis=0, ddof=1)
                 processed_data[m][f'{metric}@{k}'].update({'mean': mean_, 'std': std_})
@@ -148,6 +152,20 @@ def draw_grouped_bars_plot(models_lst, processed_data, data_name, y_lst):
     plt.subplots_adjust(left=0.08, right=0.95, top=0.9, bottom=0.05, hspace=0.25, wspace=0.25)
     plt.show()
 
+def draw_bars(models_lst, processed_data, data_name):
+    width = 0.25
+    x = np.arange(len())
+    datasets = ['train', 'val', 'test']
+    labels = ['0-8', '8-16', '16-24', '24-32', '32-40', '40-48', '48-56', '56-64', '64-72', '72-80', '80-88', '88-96',
+              '96-128', '128-256', '256-']
+    for i in range(3):
+        y = np.log10(y_lst[i])
+        plt.bar(x - (i - 2) * width, y, width, label=datasets[i])
+    plt.xticks(x, labels=labels, rotation=320)
+    plt.title("Ciao")
+    plt.legend()
+    plt.show()
+
 def draw_dist(g, dataset_name):
     # 获取节点度数
     x = (torch.log(g.out_degrees(etype='rate')) / torch.log(torch.tensor(2))).numpy()
@@ -218,30 +236,47 @@ def draw_dist(g, dataset_name):
 
 if __name__ == '__main__':
     print(plt.style.available)
-    models_lst = ['TrustSVD', 'DiffnetPP', 'FusionLightGCN', 'LightGCN', 'MF']  # 列表中越靠右，bar越靠左，legend越靠下
+    models_lst = ['TrustSVD', 'DiffnetPP', 'FLGN', 'LightGCN', 'MF', 'SocialLGN']  # 列表中越靠右，bar越靠左，legend越靠下
+    # models_lst = ['FNCL', 'NCL']  # 列表中越靠右，bar越靠左，legend越靠下
     data_name = 'Ciao'
-    processed_data = get_data_from_log(models_lst, data_name)
-    y_lst = {
-        'Yelp': [
-            [26855, 34889, 31901, 17547, 8873],
-            [4757, 4271, 3946, 2174, 1104],
-            [4751, 6125, 4796, 2428, 1163],
-        ],
-        'Flickr': [
-            [9106, 17915, 33129, 44235, 132868],
-            [1763, 2211, 4123, 5518, 16594],
-            [1778, 3101, 4916, 6038, 17073],
-        ],
-        'Epinions': [
-            [25350, 45149, 68707, 66700, 86678],
-            [4935, 5543, 8532, 8315, 10823],
-            [5038, 7811, 10210, 9140, 11219],
-        ],
-        'Ciao': [
-            [6064, 14428, 25586, 27983, 52351],
-            [1069, 1778, 3183, 3483, 6540],
-            [1103, 2514, 3816, 3829, 6752],
-        ]
-    }
-    draw_grouped_bars_plot(models_lst, processed_data, data_name, y_lst[data_name])
+    metrics = ['nDCG', 'Recall', 'Precision']
+    ks = [10, 20, 50]
+    processed_data = get_data_from_log(models_lst, data_name, metrics, ks)
+    print(processed_data)
+
+    metrics_at_k = processed_data['MF'].keys()
+    info_table = [['Ciao'] + [m for m in metrics_at_k]]
+    from tabulate import tabulate
+    for model in processed_data.keys():
+        info_table.append([model])
+        for metric in metrics_at_k:
+            mean = processed_data[model][metric]['mean']
+            std = processed_data[model][metric]['std']
+            value_str = f'{mean:.4f}±{std:.4f}'
+            info_table[-1].append(value_str)
+    print(tabulate(info_table))
+
+    # y_lst = {
+    #     'Yelp': [
+    #         [26855, 34889, 31901, 17547, 8873],
+    #         [4757, 4271, 3946, 2174, 1104],
+    #         [4751, 6125, 4796, 2428, 1163],
+    #     ],
+    #     'Flickr': [
+    #         [9106, 17915, 33129, 44235, 132868],
+    #         [1763, 2211, 4123, 5518, 16594],
+    #         [1778, 3101, 4916, 6038, 17073],
+    #     ],
+    #     'Epinions': [
+    #         [25350, 45149, 68707, 66700, 86678],
+    #         [4935, 5543, 8532, 8315, 10823],
+    #         [5038, 7811, 10210, 9140, 11219],
+    #     ],
+    #     'Ciao': [
+    #         [6064, 14428, 25586, 27983, 52351],
+    #         [1069, 1778, 3183, 3483, 6540],
+    #         [1103, 2514, 3816, 3829, 6752],
+    #     ]
+    # }
+    # draw_grouped_bars_plot(models_lst, processed_data, data_name, y_lst[data_name])
 

@@ -39,12 +39,12 @@ class NCLModel(BaseModel):
         self.task = config['TRAIN']['task']
         self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
-
-        self.ssl_temp = eval(config['MODEL']['ssl_temp'])
-        self.ssl_reg = eval(config['MODEL']['ssl_reg'])
-        self.alpha = eval(config['MODEL']['alpha'])
-        self.proto_reg = eval(config['MODEL']['proto_reg'])
         self.k = eval(config['MODEL']['num_clusters'])
+
+        self.ssl_temp = eval(config['OPTIM']['ssl_temp'])
+        self.ssl_reg = eval(config['OPTIM']['ssl_reg'])
+        self.alpha = eval(config['OPTIM']['alpha'])
+        self.proto_reg = eval(config['OPTIM']['proto_reg'])
 
         self.embedding = dglnn.HeteroEmbedding(
             {'user': self.user_num, 'item': self.item_num}, self.embedding_size

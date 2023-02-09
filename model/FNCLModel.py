@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 """
-@File    :   SNCLModel.py
+@File    :   FNCLModel.py
 @Contact :   xansar@ruc.edu.cn
 
 @Modify Time      @Author    @Version    @Desciption
@@ -29,21 +29,21 @@ class HeteroDotProductPredictor(nn.Module):
             return graph.edges[etype].data['score']
 
 
-class SNCLModel(BaseModel):
+class FNCLModel(BaseModel):
     def __init__(self, config, rel_names):
-        super(SNCLModel, self).__init__()
+        super(FNCLModel, self).__init__()
         self.config = config
         self.embedding_size = eval(config['MODEL']['embedding_size'])
         self.layer_num = eval(config['MODEL']['gcn_layer_num'])
         self.task = config['TRAIN']['task']
         self.user_num = eval(config['MODEL']['user_num'])
         self.item_num = eval(config['MODEL']['item_num'])
-
-        self.ssl_temp = eval(config['MODEL']['ssl_temp'])
-        self.ssl_reg = eval(config['MODEL']['ssl_reg'])
-        self.alpha = eval(config['MODEL']['alpha'])
-        self.proto_reg = eval(config['MODEL']['proto_reg'])
         self.k = eval(config['MODEL']['num_clusters'])
+
+        self.ssl_temp = eval(config['OPTIM']['ssl_temp'])
+        self.ssl_reg = eval(config['OPTIM']['ssl_reg'])
+        self.alpha = eval(config['OPTIM']['alpha'])
+        self.proto_reg = eval(config['OPTIM']['proto_reg'])
 
         self.embedding = dglnn.HeteroEmbedding(
             {'user': self.user_num, 'item': self.item_num}, self.embedding_size
@@ -58,17 +58,6 @@ class SNCLModel(BaseModel):
             )
         self.pred = HeteroDotProductPredictor()
         init_weights(self.modules())
-
-        self.fusion_layer_social_part = nn.Sequential(
-            nn.Linear(self.embedding_size, self.embedding_size),
-            nn.Tanh(),
-            nn.Linear(self.embedding_size, self.embedding_size),
-        )
-        self.fusion_layer_pref_part = nn.Sequential(
-            nn.Linear(self.embedding_size, self.embedding_size),
-            nn.Tanh(),
-            nn.Linear(self.embedding_size, self.embedding_size),
-        )
 
     def _compute_single_type_neighbour_ssl_loss(self, current_embedding, previous_embedding, previous_totoal_embedding):
         norm_current_embedding = F.normalize(current_embedding)
@@ -97,14 +86,14 @@ class SNCLModel(BaseModel):
         )
         # social
         ssl_social_loss = self._compute_single_type_neighbour_ssl_loss(
-            current_embedding=used_embeddings['social'][1],
-            previous_embedding=used_embeddings['social'][0],
+            current_embedding=used_embeddings['social_1'][1],
+            previous_embedding=used_embeddings['social_1'][0],
             previous_totoal_embedding=total_embeddings['user']
         )
         # total
         ssl_total_loss = self._compute_single_type_neighbour_ssl_loss(
-            current_embedding=used_embeddings['total'][1],
-            previous_embedding=used_embeddings['total'][0],
+            current_embedding=used_embeddings['social_2'][1],
+            previous_embedding=used_embeddings['social_2'][0],
             previous_totoal_embedding=total_embeddings['user']
         )
         ssl_loss = self.ssl_reg * (ssl_user_loss + self.alpha * ssl_item_loss + self.alpha * ssl_social_loss + self.alpha * ssl_total_loss)
@@ -187,11 +176,6 @@ class SNCLModel(BaseModel):
             dst = {'user': cur_embed['user']}
             social_embedding = layer(message_g, (src, dst))['user']
             pref_embedding = embeddings['user']
-            # ## fusion layer
-            # embeddings['user'] = self.fusion_layer_social_part(social_embedding) \
-            #                      + self.fusion_layer_pref_part(pref_embedding)
-            # ## regularization
-            # embeddings['user'] = F.normalize(embeddings['user'])
             embeddings['user'] = social_embedding + pref_embedding
 
             res_embedding['user'] = res_embedding['user'] + embeddings['user']
@@ -253,8 +237,8 @@ class SNCLModel(BaseModel):
             used_pref_embeddings = {
                 'user': [res_embeddings['user'], ], # 0是初始embedding，1是第k（2）层的embedding
                 'item': [res_embeddings['item'], ],
-                'social': [res_embeddings['user'], ],
-                'total': [res_embeddings['user'], ],
+                'social_1': [res_embeddings['user'], ],
+                'social_2': [res_embeddings['user'], ],
             }
             for i in range(1, len(message_g) + 1):
                 blocks = message_g[-i:]
@@ -285,11 +269,11 @@ class SNCLModel(BaseModel):
                     embeddings['user'] = social_embedding + pref_embedding
                 # ssl loss
                 if i == 1:
-                    used_pref_embeddings['social'].append(social_embedding)
+                    used_pref_embeddings['social_1'].append(social_embedding)
                 if i == len(message_g):
                     used_pref_embeddings['user'].append(pref_embedding)
                     used_pref_embeddings['item'].append(embeddings['item'])
-                    used_pref_embeddings['total'].append(embeddings['user'])
+                    used_pref_embeddings['social_2'].append(social_embedding)
 
 
                 res_embeddings['user'] = res_embeddings['user'] + embeddings['user']

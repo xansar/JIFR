@@ -85,7 +85,7 @@ def kmeans(
     :param device: (torch.device) device [default: cpu]
     :return: (torch.tensor, torch.tensor) cluster ids, cluster centers
     """
-    print(f'running {node_type} k-means on {device}..')
+    # print(f'running {node_type} k-means on {device}..')
 
     if distance == 'euclidean':
         pairwise_distance_function = pairwise_distance
@@ -107,7 +107,7 @@ def kmeans(
     initial_state = initialize(X, num_clusters)
 
     iteration = 0
-    tqdm_meter = tqdm(desc='[running kmeans]', total=niter)
+    # tqdm_meter = tqdm(desc='[running kmeans]', total=niter)
     while True:
         # # 这里使用mini batch，就是随机从X中进行抽样，然后基于抽取的样本迭代簇中心
         # num_samples = len(original_X)
@@ -138,13 +138,13 @@ def kmeans(
         # increment iteration
         iteration = iteration + 1
 
-        # update tqdm meter
-        tqdm_meter.set_postfix(
-            iteration=f'{iteration}',
-            center_shift=f'{center_shift ** 2:0.6f}',
-            tol=f'{tol:0.6f}'
-        )
-        tqdm_meter.update()
+        # # update tqdm meter
+        # tqdm_meter.set_postfix(
+        #     iteration=f'{iteration}',
+        #     center_shift=f'{center_shift ** 2:0.6f}',
+        #     tol=f'{tol:0.6f}'
+        # )
+        # tqdm_meter.update()
         if center_shift ** 2 < tol or iteration >= niter:
             break
 

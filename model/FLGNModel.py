@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 """
-@File    :   SocialLGNModel.py
+@File    :   FLGNModel.py
 @Contact :   xansar@ruc.edu.cn
 
 @Modify Time      @Author    @Version    @Desciption
@@ -28,9 +28,9 @@ class HeteroDotProductPredictor(nn.Module):
             return graph.edges[etype].data['score']
 
 
-class SocialLGNModel(BaseModel):
+class FLGNModel(BaseModel):
     def __init__(self, config, rel_names):
-        super(SocialLGNModel, self).__init__()
+        super(FLGNModel, self).__init__()
         self.config = config
         self.embedding_size = eval(config['MODEL']['embedding_size'])
         self.layer_num = eval(config['MODEL']['gcn_layer_num'])
@@ -41,16 +41,7 @@ class SocialLGNModel(BaseModel):
             {'user': self.user_num, 'item': self.item_num}, self.embedding_size
         )
         self.layers = nn.ModuleList()
-        self.fusion_layer_social_part = nn.Sequential(
-            nn.Linear(self.embedding_size, self.embedding_size, bias=False),
-            nn.Tanh(),
-            nn.Linear(self.embedding_size, self.embedding_size),
-        )
-        self.fusion_layer_pref_part = nn.Sequential(
-            nn.Linear(self.embedding_size, self.embedding_size, bias=False),
-            nn.Tanh(),
-            nn.Linear(self.embedding_size, self.embedding_size),
-        )
+
         for i in range(self.layer_num):
             self.layers.append(
                  dglnn.HeteroGraphConv({
@@ -88,11 +79,7 @@ class SocialLGNModel(BaseModel):
             dst = {'user': cur_embed['user']}
             social_embedding = layer(message_g, (src, dst))['user']
             pref_embedding = embeddings['user']
-            ## fusion layer
-            embeddings['user'] = self.fusion_layer_social_part(social_embedding) \
-                                 + self.fusion_layer_pref_part(pref_embedding)
-            ## regularization
-            embeddings['user'] = F.normalize(embeddings['user'])
+            embeddings['user'] = social_embedding + pref_embedding
 
             res_embedding['user'] = res_embedding['user'] + embeddings['user']
             res_embedding['item'] = res_embedding['item'] + embeddings['item']
@@ -146,12 +133,9 @@ class SocialLGNModel(BaseModel):
                     src = {'user': cur_embed['user']}
                     dst = {'user': cur_embed['user']}
                     social_embedding = layer(blocks[j], (src, dst))['user']
+                    # 去掉mlp和正则化，效果变好了
                     pref_embedding = embeddings['user']
-                    ## fusion layer
-                    embeddings['user'] = self.fusion_layer_social_part(social_embedding) \
-                                         + self.fusion_layer_pref_part(pref_embedding)
-                    ## regularization
-                    embeddings['user'] = F.normalize(embeddings['user'])
+                    embeddings['user'] = social_embedding + pref_embedding
 
                 res_embedding['user'] = res_embedding['user'] + embeddings['user']
                 res_embedding['item'] = res_embedding['item'] + embeddings['item']
